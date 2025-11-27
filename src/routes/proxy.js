@@ -189,7 +189,8 @@ router.all('*', apiKeyVerify, async (req, res) => {
         logger.network(`REQ[${attempt}] ${req.method} -> ${targetUrl}`, 'PROXY', {
           headers: _safeHeaders2,
           bodySize: _bodySize2,
-          bodySnippet: _reqBodySnippet2
+          bodySnippet: _reqBodySnippet2,
+          sessionId: sid
         })
 
         const _start = Date.now()
@@ -226,7 +227,8 @@ router.all('*', apiKeyVerify, async (req, res) => {
         logger.network(`RES[${attempt}] ${resp.status} <- ${targetUrl} ${_durationMs}ms`, 'PROXY', {
           contentType: _contentType,
           respSize: _respSize,
-          bodySnippet: _respSnippet
+          bodySnippet: _respSnippet,
+          sessionId: sid
         })
 
         if (retryStatuses.has(resp.status) && attempt < maxRetries && canRetryBody) {
