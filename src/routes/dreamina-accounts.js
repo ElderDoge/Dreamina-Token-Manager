@@ -23,7 +23,8 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
       email: account.email,
       password: account.password,
       sessionid: account.sessionid,
-      sessionid_expires: account.sessionid_expires
+      sessionid_expires: account.sessionid_expires,
+      disabled: account.disabled
     }))
 
     res.json({ total, page, pageSize, data: accounts })

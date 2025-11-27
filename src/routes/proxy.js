@@ -11,7 +11,7 @@ let rrIndex = 0
 
 const pickAccount = () => {
   const all = dreaminaAccountManager.getAllAccounts() || []
-  const available = all.filter(a => a && a.sessionid)
+  const available = all.filter(a => a && a.sessionid && !a.disabled)
   if (available.length === 0) return null
   rrIndex = (rrIndex + 1) % available.length
   return available[rrIndex]
@@ -73,12 +73,12 @@ router.all('*', apiKeyVerify, async (req, res) => {
 
     // 复制并覆盖 headers，仅替换 Authorization
     const incomingHeaders = { ...req.headers }
-    // 清理可能导致上游异常的请求头，由 axios 重算/设置
-    ;['host', 'connection', 'content-length', 'transfer-encoding', 'expect'].forEach(h => {
-      if (incomingHeaders[h]) delete incomingHeaders[h]
-      const H = h.charAt(0).toUpperCase() + h.slice(1)
-      if (incomingHeaders[H]) delete incomingHeaders[H]
-    })
+      // 清理可能导致上游异常的请求头，由 axios 重算/设置
+      ;['host', 'connection', 'content-length', 'transfer-encoding', 'expect'].forEach(h => {
+        if (incomingHeaders[h]) delete incomingHeaders[h]
+        const H = h.charAt(0).toUpperCase() + h.slice(1)
+        if (incomingHeaders[H]) delete incomingHeaders[H]
+      })
     // 注意：authorization 在重试时动态写入（切换 sessionId）
     const headers = {
       ...incomingHeaders
@@ -140,7 +140,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
       axiosConfig.headers = headers
       axiosConfig.maxBodyLength = Infinity
       axiosConfig.maxContentLength = Infinity
-    } catch (_) {}
+    } catch (_) { }
 
     // 基于状态码的 sessionId 轮换重试
     // 触发条件：上游响应为 429/400/401/504
@@ -243,7 +243,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
       Object.entries((finalResp && finalResp.headers) || {}).forEach(([k, v]) => {
         const _skip = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade']
         if (!_skip.includes(String(k || '').toLowerCase())) {
-          try { res.setHeader(k, v) } catch (_) {}
+          try { res.setHeader(k, v) } catch (_) { }
         }
       })
       setCorsHeaders(req, res)
@@ -325,7 +325,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
     Object.entries(resp.headers || {}).forEach(([k, v]) => {
       const _skip = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade']
       if (!_skip.includes(String(k || '').toLowerCase())) {
-        try { res.setHeader(k, v) } catch (_) {}
+        try { res.setHeader(k, v) } catch (_) { }
       }
     })
     // 覆盖/补充 CORS 响应头

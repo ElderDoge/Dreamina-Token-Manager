@@ -7,26 +7,26 @@ class DreaminaAccount {
     constructor() {
         this.dataPersistence = new DataPersistence()
         this.tokenManager = new DreaminaTokenManager()
-        
+
         this.dreaminaAccounts = []
         this.isInitialized = false
         this._dailyTimer = null
         this._lastDailyRunDate = null
-        
+
         this._initialize()
     }
 
     async _initialize() {
         try {
             await this.loadAccounts()
-            
+
             if (config.autoRefresh) {
                 this.refreshInterval = setInterval(
                     () => this.autoRefreshSessionIds(),
                     (config.autoRefreshInterval || 21600) * 1000
                 )
             }
-            
+
             // 设置每日定时刷新（按指定时区与时间）
             this._setupDailyRefresh()
 
@@ -126,13 +126,13 @@ class DreaminaAccount {
         try {
             const allAccounts = await this.dataPersistence.loadAccounts()
             this.dreaminaAccounts = allAccounts.filter(account => account.sessionid || account.sessionid_expires)
-            
+
             if (this.dreaminaAccounts.length === 0) {
                 this.dreaminaAccounts = []
             }
-            
+
             await this._validateAndCleanSessionIds()
-            
+
             logger.success(`成功加载 ${this.dreaminaAccounts.length} 个 Dreamina 账户`, 'DREAMINA')
         } catch (error) {
             logger.error('加载 Dreamina 账户失败', 'DREAMINA', '', error)
@@ -142,7 +142,7 @@ class DreaminaAccount {
 
     async _validateAndCleanSessionIds() {
         const validAccounts = []
-        
+
         for (const account of this.dreaminaAccounts) {
             if (account.sessionid && this.tokenManager.validateSessionId(account.sessionid, account.sessionid_expires)) {
                 validAccounts.push(account)
@@ -152,11 +152,12 @@ class DreaminaAccount {
                 if (result) {
                     account.sessionid = result.sessionid
                     account.sessionid_expires = result.expires
+                    account.disabled = false
                     validAccounts.push(account)
                 }
             }
         }
-        
+
         this.dreaminaAccounts = validAccounts
     }
 
@@ -165,54 +166,61 @@ class DreaminaAccount {
             logger.warn('Dreamina 账户管理器尚未初始化，跳过自动刷新', 'DREAMINA')
             return 0
         }
-        
+
         logger.info('开始自动刷新 Dreamina SessionID...', 'DREAMINA', '🔄')
-        
+
         const needsRefresh = this.dreaminaAccounts.filter(account =>
             this.tokenManager.isSessionIdExpiringSoon(account.sessionid_expires, thresholdHours)
         )
-        
+
         if (needsRefresh.length === 0) {
             logger.info('没有需要刷新的 SessionID', 'DREAMINA')
             return 0
         }
-        
+
         logger.info(`发现 ${needsRefresh.length} 个 SessionID 需要刷新`, 'DREAMINA')
-        
+
         let successCount = 0
         let failedCount = 0
-        
+
         for (const account of needsRefresh) {
             try {
                 const updatedAccount = await this.tokenManager.refreshSessionId(account)
                 if (updatedAccount) {
+                    updatedAccount.disabled = false
                     const index = this.dreaminaAccounts.findIndex(acc => acc.email === account.email)
                     if (index !== -1) {
                         this.dreaminaAccounts[index] = updatedAccount
                     }
-                    
+
                     await this.dataPersistence.saveAccount(account.email, {
                         password: updatedAccount.password,
                         token: updatedAccount.token,
                         expires: updatedAccount.expires,
                         sessionid: updatedAccount.sessionid,
-                        sessionid_expires: updatedAccount.sessionid_expires
+                        sessionid_expires: updatedAccount.sessionid_expires,
+                        disabled: false
                     })
-                    
+
+                    // 更新内存中的状态
+                    account.disabled = false
+
                     successCount++
                     logger.info(`账户 ${account.email} SessionID 刷新并保存成功 (${successCount}/${needsRefresh.length})`, 'DREAMINA', '✅')
                 } else {
                     failedCount++
-                    logger.error(`账户 ${account.email} SessionID 刷新失败 (${failedCount} 个失败)`, 'DREAMINA', '❌')
+                    account.disabled = true
+                    logger.error(`账户 ${account.email} SessionID 刷新失败，已禁用该账户 (${failedCount} 个失败)`, 'DREAMINA', '❌')
                 }
             } catch (error) {
                 failedCount++
-                logger.error(`账户 ${account.email} 刷新过程中出错`, 'DREAMINA', '', error)
+                account.disabled = true
+                logger.error(`账户 ${account.email} 刷新过程中出错，已禁用该账户`, 'DREAMINA', '', error)
             }
-            
+
             await this._delay(2000)
         }
-        
+
         logger.success(`SessionID 刷新完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'DREAMINA')
         return successCount
     }
@@ -224,24 +232,25 @@ class DreaminaAccount {
                 logger.warn(`Dreamina 账户 ${email} 已存在`, 'DREAMINA')
                 return false
             }
-            
+
             const result = await this.tokenManager.login(email, password)
             if (!result) {
                 logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
                 return false
             }
-            
+
             const newAccount = {
                 email,
                 password,
                 sessionid: result.sessionid,
-                sessionid_expires: result.expires
+                sessionid_expires: result.expires,
+                disabled: false
             }
-            
+
             this.dreaminaAccounts.push(newAccount)
-            
+
             await this.dataPersistence.saveAccount(email, newAccount)
-            
+
             logger.success(`成功添加 Dreamina 账户: ${email}`, 'DREAMINA')
             return true
         } catch (error) {
@@ -257,9 +266,9 @@ class DreaminaAccount {
                 logger.warn(`Dreamina 账户 ${email} 不存在`, 'DREAMINA')
                 return false
             }
-            
+
             this.dreaminaAccounts.splice(index, 1)
-            
+
             logger.success(`成功移除 Dreamina 账户: ${email}`, 'DREAMINA')
             return true
         } catch (error) {
@@ -274,25 +283,31 @@ class DreaminaAccount {
             logger.error(`未找到邮箱为 ${email} 的 Dreamina 账户`, 'DREAMINA')
             return false
         }
-        
+
         const updatedAccount = await this.tokenManager.refreshSessionId(account)
         if (updatedAccount) {
+            updatedAccount.disabled = false
             const index = this.dreaminaAccounts.findIndex(acc => acc.email === email)
             if (index !== -1) {
                 this.dreaminaAccounts[index] = updatedAccount
             }
-            
+
             await this.dataPersistence.saveAccount(email, {
                 password: updatedAccount.password,
                 token: updatedAccount.token,
                 expires: updatedAccount.expires,
                 sessionid: updatedAccount.sessionid,
-                sessionid_expires: updatedAccount.sessionid_expires
+                sessionid_expires: updatedAccount.sessionid_expires,
+                disabled: false
             })
-            
+
+            account.disabled = false
+
             return true
         }
-        
+
+        account.disabled = true // Mark as disabled on refresh failure
+        await this.dataPersistence.saveAccount(email, { ...account, disabled: true }) // Persist disabled state
         return false
     }
 
@@ -302,7 +317,7 @@ class DreaminaAccount {
 
     getHealthStats() {
         const sessionIdStats = this.tokenManager.getSessionIdHealthStats(this.dreaminaAccounts)
-        
+
         return {
             accounts: sessionIdStats,
             initialized: this.isInitialized
@@ -322,7 +337,7 @@ class DreaminaAccount {
             clearInterval(this._dailyTimer)
             this._dailyTimer = null
         }
-        
+
         logger.info('Dreamina 账户管理器已清理资源', 'DREAMINA', '🧹')
     }
 }
