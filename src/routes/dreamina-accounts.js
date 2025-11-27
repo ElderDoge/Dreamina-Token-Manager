@@ -5,6 +5,7 @@ const { logger } = require('../utils/logger')
 const { adminKeyVerify } = require('../middlewares/authorization')
 const DataPersistence = require('../utils/data-persistence')
 const sse = require('../utils/sse')
+const config = require('../config')
 
 const dataPersistence = new DataPersistence()
 
@@ -99,21 +100,52 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
       .map(item => item.trim())
       .filter(item => item !== '')
 
+    // 去重
+    const uniqueList = []
+    const seenEmails = new Set()
+    for (const item of list) {
+      const [email] = item.split(':')
+      if (email && !seenEmails.has(email)) {
+        seenEmails.add(email)
+        uniqueList.push(item)
+      }
+    }
+    const finalList = uniqueList
+
     const jobId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    res.status(202).json({ message: '批量任务已提交', jobId, total: list.length })
+    res.status(202).json({ message: '批量任务已提交', jobId, total: finalList.length })
 
     setImmediate(async () => {
       let successCount = 0
       const failed = []
+      const concurrency = config.batchAddConcurrency
 
-      for (const line of list) {
+      // 简单的并发控制函数
+      const processBatch = async (items, limit, fn) => {
+        const results = []
+        const executing = []
+        for (const item of items) {
+          const p = Promise.resolve().then(() => fn(item))
+          results.push(p)
+          if (limit <= items.length) {
+            const e = p.then(() => executing.splice(executing.indexOf(e), 1))
+            executing.push(e)
+            if (executing.length >= limit) {
+              await Promise.race(executing)
+            }
+          }
+        }
+        return Promise.all(results)
+      }
+
+      await processBatch(finalList, concurrency, async (line) => {
         const [email, password] = line.split(':')
-        if (!email || !password) continue
+        if (!email || !password) return
 
         const exists = dreaminaAccountManager.getAllAccounts().find(item => item.email === email)
         if (exists) {
           failed.push({ email, reason: 'exists' })
-          continue
+          return
         }
 
         try {
@@ -123,11 +155,11 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
         } catch (e) {
           failed.push({ email, reason: e.message || 'failed' })
         }
-      }
+      })
 
       sse.broadcast('account:batchAdd:done', {
         jobId,
-        total: list.length,
+        total: finalList.length,
         successCount,
         failed
       })

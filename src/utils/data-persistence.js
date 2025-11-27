@@ -103,11 +103,14 @@ class DataPersistence {
   async _loadFromFile() {
     // 确保文件存在
     await this._ensureDataFileExists()
-    
+
     const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
     const data = JSON.parse(fileContent)
-    
-    return data.accounts || []
+
+    return (data.accounts || []).map(acc => ({
+      ...acc,
+      disabled: acc.disabled === true
+    }))
   }
 
   /**
@@ -149,10 +152,10 @@ class DataPersistence {
    */
   async _saveToFile(email, accountData) {
     await this._ensureDataFileExists()
-    
+
     const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
     const data = JSON.parse(fileContent)
-    
+
     if (!data.accounts) {
       data.accounts = []
     }
@@ -165,7 +168,8 @@ class DataPersistence {
       token: accountData.token,
       expires: accountData.expires,
       sessionid: accountData.sessionid,
-      sessionid_expires: accountData.sessionid_expires
+      sessionid_expires: accountData.sessionid_expires,
+      disabled: accountData.disabled === true
     }
 
     if (existingIndex !== -1) {
@@ -197,17 +201,18 @@ class DataPersistence {
    */
   async _saveAllToFile(accounts) {
     await this._ensureDataFileExists()
-    
+
     const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
     const data = JSON.parse(fileContent)
-    
+
     data.accounts = accounts.map(account => ({
       email: account.email,
       password: account.password,
       token: account.token,
       expires: account.expires,
       sessionid: account.sessionid,
-      sessionid_expires: account.sessionid_expires
+      sessionid_expires: account.sessionid_expires,
+      disabled: account.disabled === true
     }))
 
     await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')

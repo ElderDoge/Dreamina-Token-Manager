@@ -12,6 +12,7 @@ class DreaminaAccount {
         this.isInitialized = false
         this._dailyTimer = null
         this._lastDailyRunDate = null
+        this.processingEmails = new Set()
 
         this._initialize()
     }
@@ -182,8 +183,9 @@ class DreaminaAccount {
 
         let successCount = 0
         let failedCount = 0
+        const concurrency = config.batchAddConcurrency
 
-        for (const account of needsRefresh) {
+        await this._processBatch(needsRefresh, concurrency, async (account) => {
             try {
                 const updatedAccount = await this.tokenManager.refreshSessionId(account)
                 if (updatedAccount) {
@@ -206,23 +208,38 @@ class DreaminaAccount {
                     account.disabled = false
 
                     successCount++
-                    logger.info(`账户 ${account.email} SessionID 刷新并保存成功 (${successCount}/${needsRefresh.length})`, 'DREAMINA', '✅')
+                    logger.info(`账户 ${account.email} SessionID 刷新并保存成功`, 'DREAMINA', '✅')
                 } else {
                     failedCount++
                     account.disabled = true
-                    logger.error(`账户 ${account.email} SessionID 刷新失败，已禁用该账户 (${failedCount} 个失败)`, 'DREAMINA', '❌')
+                    logger.error(`账户 ${account.email} SessionID 刷新失败，已禁用该账户`, 'DREAMINA', '❌')
                 }
             } catch (error) {
                 failedCount++
                 account.disabled = true
                 logger.error(`账户 ${account.email} 刷新过程中出错，已禁用该账户`, 'DREAMINA', '', error)
             }
-
-            await this._delay(2000)
-        }
+        })
 
         logger.success(`SessionID 刷新完成: 成功 ${successCount} 个，失败 ${failedCount} 个`, 'DREAMINA')
         return successCount
+    }
+
+    async _processBatch(items, limit, fn) {
+        const results = []
+        const executing = []
+        for (const item of items) {
+            const p = Promise.resolve().then(() => fn(item))
+            results.push(p)
+            if (limit <= items.length) {
+                const e = p.then(() => executing.splice(executing.indexOf(e), 1))
+                executing.push(e)
+                if (executing.length >= limit) {
+                    await Promise.race(executing)
+                }
+            }
+        }
+        return Promise.all(results)
     }
 
     async addAccount(email, password) {
@@ -233,26 +250,37 @@ class DreaminaAccount {
                 return false
             }
 
-            const result = await this.tokenManager.login(email, password)
-            if (!result) {
-                logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
+            if (this.processingEmails.has(email)) {
+                logger.warn(`Dreamina 账户 ${email} 正在添加中，请勿重复提交`, 'DREAMINA')
                 return false
             }
 
-            const newAccount = {
-                email,
-                password,
-                sessionid: result.sessionid,
-                sessionid_expires: result.expires,
-                disabled: false
+            this.processingEmails.add(email)
+
+            try {
+                const result = await this.tokenManager.login(email, password)
+                if (!result) {
+                    logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
+                    return false
+                }
+
+                const newAccount = {
+                    email,
+                    password,
+                    sessionid: result.sessionid,
+                    sessionid_expires: result.expires,
+                    disabled: false
+                }
+
+                this.dreaminaAccounts.push(newAccount)
+
+                await this.dataPersistence.saveAccount(email, newAccount)
+
+                logger.success(`成功添加 Dreamina 账户: ${email}`, 'DREAMINA')
+                return true
+            } finally {
+                this.processingEmails.delete(email)
             }
-
-            this.dreaminaAccounts.push(newAccount)
-
-            await this.dataPersistence.saveAccount(email, newAccount)
-
-            logger.success(`成功添加 Dreamina 账户: ${email}`, 'DREAMINA')
-            return true
         } catch (error) {
             logger.error(`添加 Dreamina 账户失败 (${email})`, 'DREAMINA', '', error)
             return false

@@ -239,7 +239,8 @@ const getAllAccounts = async () => {
         email: keys[index].replace('user:', ''),
         password: accountData.password || '',
         token: accountData.token || '',
-        expires: accountData.expires || ''
+        expires: accountData.expires || '',
+        disabled: accountData.disabled === 'true'
       }
     }).filter(Boolean) // 过滤掉null值
 
@@ -265,7 +266,8 @@ const setAccount = async (key, value) => {
     await client.hset(`user:${key}`, {
       password: password || '',
       token: token || '',
-      expires: expires || ''
+      expires: expires || '',
+      disabled: value.disabled ? 'true' : 'false'
     })
 
     logger.success(`账户 ${key} 设置成功`, 'REDIS')

@@ -52,6 +52,7 @@ const config = {
     browserProxyUrl: (process.env.BROWSER_PROXY_URL || '').trim(),
     browserProxyUsername: (process.env.BROWSER_PROXY_USERNAME || '').trim(),
     browserProxyPassword: (process.env.BROWSER_PROXY_PASSWORD || '').trim(),
+    batchAddConcurrency: parseInt(process.env.BATCH_ADD_CONCURRENCY, 10) || 5,
 }
 
 module.exports = config
