@@ -4,6 +4,9 @@ const config = require('../config/index.js')
 const redisClient = require('./redis')
 const { logger } = require('./logger')
 
+// 模块级文件写入锁（单例，所有实例共享）
+let fileLock = Promise.resolve()
+
 /**
  * 数据持久化管理器
  * 统一处理账户数据的存储和读取
@@ -11,6 +14,23 @@ const { logger } = require('./logger')
 class DataPersistence {
   constructor() {
     this.dataFilePath = path.join(__dirname, '../../data/data.json')
+  }
+
+  /**
+   * 获取文件写入锁，确保串行写入
+   * @param {Function} fn - 需要加锁执行的异步函数
+   * @returns {Promise<any>}
+   */
+  async _withFileLock(fn) {
+    const prev = fileLock
+    let resolve
+    fileLock = new Promise(r => { resolve = r })
+    try {
+      await prev
+      return await fn()
+    } finally {
+      resolve()
+    }
   }
 
   /**
@@ -151,35 +171,36 @@ class DataPersistence {
    * @private
    */
   async _saveToFile(email, accountData) {
-    await this._ensureDataFileExists()
+    return this._withFileLock(async () => {
+      await this._ensureDataFileExists()
 
-    const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
-    const data = JSON.parse(fileContent)
+      const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
+      const data = JSON.parse(fileContent)
 
-    if (!data.accounts) {
-      data.accounts = []
-    }
+      if (!data.accounts) {
+        data.accounts = []
+      }
 
-    // 查找现有账户或添加新账户
-    const existingIndex = data.accounts.findIndex(account => account.email === email)
-    const updatedAccount = {
-      email,
-      password: accountData.password,
-      token: accountData.token,
-      expires: accountData.expires,
-      sessionid: accountData.sessionid,
-      sessionid_expires: accountData.sessionid_expires,
-      disabled: accountData.disabled === true
-    }
+      const existingIndex = data.accounts.findIndex(account => account.email === email)
+      const updatedAccount = {
+        email,
+        password: accountData.password,
+        token: accountData.token,
+        expires: accountData.expires,
+        sessionid: accountData.sessionid,
+        sessionid_expires: accountData.sessionid_expires,
+        disabled: accountData.disabled === true
+      }
 
-    if (existingIndex !== -1) {
-      data.accounts[existingIndex] = updatedAccount
-    } else {
-      data.accounts.push(updatedAccount)
-    }
+      if (existingIndex !== -1) {
+        data.accounts[existingIndex] = updatedAccount
+      } else {
+        data.accounts.push(updatedAccount)
+      }
 
-    await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
-    return true
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    })
   }
 
   /**
@@ -200,23 +221,25 @@ class DataPersistence {
    * @private
    */
   async _saveAllToFile(accounts) {
-    await this._ensureDataFileExists()
+    return this._withFileLock(async () => {
+      await this._ensureDataFileExists()
 
-    const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
-    const data = JSON.parse(fileContent)
+      const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
+      const data = JSON.parse(fileContent)
 
-    data.accounts = accounts.map(account => ({
-      email: account.email,
-      password: account.password,
-      token: account.token,
-      expires: account.expires,
-      sessionid: account.sessionid,
-      sessionid_expires: account.sessionid_expires,
-      disabled: account.disabled === true
-    }))
+      data.accounts = accounts.map(account => ({
+        email: account.email,
+        password: account.password,
+        token: account.token,
+        expires: account.expires,
+        sessionid: account.sessionid,
+        sessionid_expires: account.sessionid_expires,
+        disabled: account.disabled === true
+      }))
 
-    await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
-    return true
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    })
   }
 
   /**
