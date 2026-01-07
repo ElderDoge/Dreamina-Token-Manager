@@ -242,7 +242,7 @@ class DreaminaAccount {
         return Promise.all(results)
     }
 
-    async addAccount(email, password) {
+    async addAccount(email, password, existingSessionId = null) {
         try {
             const existingAccount = this.dreaminaAccounts.find(acc => acc.email === email)
             if (existingAccount) {
@@ -258,17 +258,27 @@ class DreaminaAccount {
             this.processingEmails.add(email)
 
             try {
-                const result = await this.tokenManager.login(email, password)
-                if (!result) {
-                    logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
-                    return false
+                let sessionid, sessionid_expires
+
+                if (existingSessionId) {
+                    sessionid = existingSessionId
+                    sessionid_expires = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+                    logger.info(`使用已有 SessionID 添加账户: ${email}`, 'DREAMINA')
+                } else {
+                    const result = await this.tokenManager.login(email, password)
+                    if (!result) {
+                        logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
+                        return false
+                    }
+                    sessionid = result.sessionid
+                    sessionid_expires = result.expires
                 }
 
                 const newAccount = {
                     email,
                     password,
-                    sessionid: result.sessionid,
-                    sessionid_expires: result.expires,
+                    sessionid,
+                    sessionid_expires,
                     disabled: false
                 }
 

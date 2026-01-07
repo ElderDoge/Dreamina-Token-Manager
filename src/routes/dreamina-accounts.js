@@ -37,7 +37,7 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
 
 router.post('/setAccount', adminKeyVerify, async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, password, sessionid } = req.body
     if (!email || !password) {
       return res.status(400).json({ error: '邮箱和密码不能为空' })
     }
@@ -52,7 +52,7 @@ router.post('/setAccount', adminKeyVerify, async (req, res) => {
 
     setImmediate(async () => {
       try {
-        const success = await dreaminaAccountManager.addAccount(email, password)
+        const success = await dreaminaAccountManager.addAccount(email, password, sessionid || null)
         sse.broadcast('account:add:done', { jobId, email, success })
       } catch (err) {
         logger.error('后台创建账号任务失败', 'DREAMINA', '', err)
@@ -139,7 +139,10 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
       }
 
       await processBatch(finalList, concurrency, async (line) => {
-        const [email, password] = line.split(':')
+        const parts = line.split(':')
+        const email = parts[0]
+        const password = parts[1]
+        const sessionid = parts.slice(2).join(':') || null
         if (!email || !password) return
 
         const exists = dreaminaAccountManager.getAllAccounts().find(item => item.email === email)
@@ -149,7 +152,7 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
         }
 
         try {
-          const ok = await dreaminaAccountManager.addAccount(email, password)
+          const ok = await dreaminaAccountManager.addAccount(email, password, sessionid)
           if (ok) successCount++
           else failed.push({ email, reason: 'failed' })
         } catch (e) {

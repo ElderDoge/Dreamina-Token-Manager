@@ -258,7 +258,12 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700">Password</label>
-                <input v-model="newAccount.password" type="password" 
+                <input v-model="newAccount.password" type="password"
+                       class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-12 text-base px-4">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">SessionID (可选)</label>
+                <input v-model="newAccount.sessionid" type="text" placeholder="如果提供则跳过登录"
                        class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-12 text-base px-4">
               </div>
               <div class="flex justify-end space-x-4 pt-4">
@@ -277,7 +282,7 @@
             <h2 class="text-xl font-bold mb-4 px-4">批量添加账号</h2>
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 px-4 pb-2">账号列表（每行一个，格式：email:password）</label>
+                <label class="block text-sm font-medium text-gray-700 px-4 pb-2">账号列表（每行一个，格式：email:password[:sessionid]）</label>
                 <textarea v-model="batchAccounts" rows="6" class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-36 text-base px-4 py-3 resize-none"></textarea>
               </div>
               <div class="flex justify-end space-x-4 pt-4">
@@ -324,7 +329,8 @@ const showAddModal = ref(false)
 const addMode = ref('single')
 const newAccount = ref({
   email: '',
-  password: ''
+  password: '',
+  sessionid: ''
 })
 const batchAccounts = ref('')
 
@@ -511,7 +517,7 @@ const addToken = async () => {
       }
     })
     showAddModal.value = false
-    newAccount.value = { email: '', password: '' }
+    newAccount.value = { email: '', password: '', sessionid: '' }
     showToast('添加任务已提交')
   } catch (error) {
     console.error('添加账号失败:', error)
