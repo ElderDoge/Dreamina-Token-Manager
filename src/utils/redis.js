@@ -235,11 +235,15 @@ const getAllAccounts = async () => {
         logger.error(`账户 ${keys[index]} 数据为空`, 'REDIS')
         return null
       }
+      const rawSessionExpires = accountData.sessionid_expires
+      const sessionExpires = (rawSessionExpires && !isNaN(rawSessionExpires)) ? Number(rawSessionExpires) : null
       return {
         email: keys[index].replace('user:', ''),
         password: accountData.password || '',
         token: accountData.token || '',
         expires: accountData.expires || '',
+        sessionid: accountData.sessionid || '',
+        sessionid_expires: sessionExpires,
         disabled: accountData.disabled === 'true'
       }
     }).filter(Boolean) // 过滤掉null值
@@ -262,11 +266,13 @@ const setAccount = async (key, value) => {
   try {
     const client = await ensureConnection()
 
-    const { password, token, expires } = value
+    const { password, token, expires, sessionid, sessionid_expires } = value
     await client.hset(`user:${key}`, {
       password: password || '',
       token: token || '',
       expires: expires || '',
+      sessionid: sessionid || '',
+      sessionid_expires: sessionid_expires || '',
       disabled: value.disabled ? 'true' : 'false'
     })
 
