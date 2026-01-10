@@ -367,6 +367,7 @@ const redisClient = {
   checkKeyExists,
   getConnectionStatus,
   cleanup,
+  ensureConnection,
 
   // 直接Redis命令的代理方法（按需连接）
   async hset(key, ...args) {

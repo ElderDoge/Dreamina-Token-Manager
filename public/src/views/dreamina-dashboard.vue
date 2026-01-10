@@ -206,6 +206,13 @@
                     </div>
                   </div>
                 </div>
+                <!-- 当日调用统计 -->
+                <div class="relative flex items-center bg-blue-50/80 rounded-lg px-2 py-1">
+                  <div class="overflow-x-auto scrollbar-hide flex-1 flex items-center space-x-2">
+                    <span class="text-gray-700 min-w-[96px] text-left font-semibold">📊 Today:</span>
+                    <span class="font-medium whitespace-nowrap text-left">{{ token.daily_call_success || 0 }}/{{ token.daily_call_total || 0 }}</span>
+                  </div>
+                </div>
               </div>
               
               <div class="pt-4 mt-auto border-t border-gray-200/50 space-y-2">

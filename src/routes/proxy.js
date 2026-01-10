@@ -5,6 +5,7 @@ const { logger } = require('../utils/logger')
 const { apiKeyVerify, adminKeyVerify } = require('../middlewares/authorization')
 const { getProxyTarget, setProxyTarget } = require('../utils/proxy-target')
 const dreaminaAccountManager = require('../utils/dreamina-account')
+const dailyStats = require('../utils/daily-stats')
 const config = require('../config')
 
 // 使用新的加权选账方法
@@ -163,6 +164,11 @@ router.all('*', apiKeyVerify, async (req, res) => {
         const _sidPrefix = sid.split('-')[0] || 'unknown'
         logger.network(`REQ[${attempt}] ${req.method} -> ${targetUrl} [${_sidPrefix}]`, 'PROXY')
 
+        // 统计：发起请求前 total+1（确保网络错误也被计入）
+        dailyStats.incrTotal(accountForAttempt.email).catch(err => {
+          logger.error(`统计 total 失败: ${err.message}`, 'DAILY-STATS')
+        })
+
         const _start = Date.now()
         const resp = await axios(axiosConfig)
         lastStatusForLog = resp.status
@@ -204,6 +210,10 @@ router.all('*', apiKeyVerify, async (req, res) => {
             dreaminaAccountManager.recordFailure(accountForAttempt)
           } else {
             dreaminaAccountManager.recordSuccess(accountForAttempt)
+            // 统计：成功时 success+1
+            dailyStats.incrSuccess(accountForAttempt.email).catch(err => {
+              logger.error(`统计 success 失败: ${err.message}`, 'DAILY-STATS')
+            })
           }
         } else if (resp.status === 429 || resp.status === 500) {
           // 最终仍是 429/500，记录失败

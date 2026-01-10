@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const dreaminaAccountManager = require('../utils/dreamina-account')
+const dailyStats = require('../utils/daily-stats')
 const { logger } = require('../utils/logger')
 const { adminKeyVerify } = require('../middlewares/authorization')
 const DataPersistence = require('../utils/data-persistence')
@@ -20,6 +21,10 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
 
     const paginatedAccounts = allAccounts.slice(start, start + pageSize)
 
+    // 批量获取当日统计数据
+    const emails = paginatedAccounts.map(a => a.email)
+    const stats = await dailyStats.batchGet(emails)
+
     const accounts = paginatedAccounts.map(account => ({
       email: account.email,
       password: account.password,
@@ -32,7 +37,10 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
       daily_unavailable_date: account.daily_unavailable_date || null,
       last_fail_date: account.last_fail_date || null,
       consecutive_fail_days: account.consecutive_fail_days || 0,
-      overall_unavailable: account.overall_unavailable || false
+      overall_unavailable: account.overall_unavailable || false,
+      // 当日统计
+      daily_call_total: stats[account.email]?.daily_call_total || 0,
+      daily_call_success: stats[account.email]?.daily_call_success || 0
     }))
 
     res.json({ total, page, pageSize, data: accounts })
