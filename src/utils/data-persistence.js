@@ -129,7 +129,14 @@ class DataPersistence {
 
     return (data.accounts || []).map(acc => ({
       ...acc,
-      disabled: acc.disabled === true
+      disabled: acc.disabled === true,
+      // 可用性字段
+      weight: typeof acc.weight === 'number' ? acc.weight : 100,
+      daily_consecutive_fails: acc.daily_consecutive_fails || 0,
+      daily_unavailable_date: acc.daily_unavailable_date || null,
+      last_fail_date: acc.last_fail_date || null,
+      consecutive_fail_days: acc.consecutive_fail_days || 0,
+      overall_unavailable: acc.overall_unavailable === true
     }))
   }
 
@@ -149,9 +156,9 @@ class DataPersistence {
     for (const item of accountTokens) {
       const [email, password] = item.split(':')
       if (email && password) {
-        // 注意：这里需要登录获取token，但在加载阶段不应该进行网络请求
+        // 注意：这里需要登录获取sessionid，但在加载阶段不应该进行网络请求
         // 这个逻辑需要在Account类中处理
-        accounts.push({ email, password, token: null, expires: null })
+        accounts.push({ email, password, sessionid: null, sessionid_expires: null })
       }
     }
 
@@ -185,11 +192,16 @@ class DataPersistence {
       const updatedAccount = {
         email,
         password: accountData.password,
-        token: accountData.token,
-        expires: accountData.expires,
         sessionid: accountData.sessionid,
         sessionid_expires: accountData.sessionid_expires,
-        disabled: accountData.disabled === true
+        disabled: accountData.disabled === true,
+        // 可用性字段
+        weight: typeof accountData.weight === 'number' ? accountData.weight : 100,
+        daily_consecutive_fails: accountData.daily_consecutive_fails || 0,
+        daily_unavailable_date: accountData.daily_unavailable_date || null,
+        last_fail_date: accountData.last_fail_date || null,
+        consecutive_fail_days: accountData.consecutive_fail_days || 0,
+        overall_unavailable: accountData.overall_unavailable === true
       }
 
       if (existingIndex !== -1) {
@@ -230,11 +242,16 @@ class DataPersistence {
       data.accounts = accounts.map(account => ({
         email: account.email,
         password: account.password,
-        token: account.token,
-        expires: account.expires,
         sessionid: account.sessionid,
         sessionid_expires: account.sessionid_expires,
-        disabled: account.disabled === true
+        disabled: account.disabled === true,
+        // 可用性字段
+        weight: typeof account.weight === 'number' ? account.weight : 100,
+        daily_consecutive_fails: account.daily_consecutive_fails || 0,
+        daily_unavailable_date: account.daily_unavailable_date || null,
+        last_fail_date: account.last_fail_date || null,
+        consecutive_fail_days: account.consecutive_fail_days || 0,
+        overall_unavailable: account.overall_unavailable === true
       }))
 
       await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')

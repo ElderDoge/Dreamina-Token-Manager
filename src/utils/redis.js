@@ -240,11 +240,16 @@ const getAllAccounts = async () => {
       return {
         email: keys[index].replace('user:', ''),
         password: accountData.password || '',
-        token: accountData.token || '',
-        expires: accountData.expires || '',
         sessionid: accountData.sessionid || '',
         sessionid_expires: sessionExpires,
-        disabled: accountData.disabled === 'true'
+        disabled: accountData.disabled === 'true',
+        // 可用性字段
+        weight: accountData.weight ? Number(accountData.weight) : 100,
+        daily_consecutive_fails: accountData.daily_consecutive_fails ? Number(accountData.daily_consecutive_fails) : 0,
+        daily_unavailable_date: accountData.daily_unavailable_date || null,
+        last_fail_date: accountData.last_fail_date || null,
+        consecutive_fail_days: accountData.consecutive_fail_days ? Number(accountData.consecutive_fail_days) : 0,
+        overall_unavailable: accountData.overall_unavailable === 'true'
       }
     }).filter(Boolean) // 过滤掉null值
 
@@ -266,14 +271,19 @@ const setAccount = async (key, value) => {
   try {
     const client = await ensureConnection()
 
-    const { password, token, expires, sessionid, sessionid_expires } = value
+    const { password, sessionid, sessionid_expires } = value
     await client.hset(`user:${key}`, {
       password: password || '',
-      token: token || '',
-      expires: expires || '',
       sessionid: sessionid || '',
       sessionid_expires: sessionid_expires || '',
-      disabled: value.disabled ? 'true' : 'false'
+      disabled: value.disabled ? 'true' : 'false',
+      // 可用性字段
+      weight: String(typeof value.weight === 'number' ? value.weight : 100),
+      daily_consecutive_fails: String(value.daily_consecutive_fails || 0),
+      daily_unavailable_date: value.daily_unavailable_date || '',
+      last_fail_date: value.last_fail_date || '',
+      consecutive_fail_days: String(value.consecutive_fail_days || 0),
+      overall_unavailable: value.overall_unavailable ? 'true' : 'false'
     })
 
     logger.success(`账户 ${key} 设置成功`, 'REDIS')

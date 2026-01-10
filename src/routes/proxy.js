@@ -7,14 +7,9 @@ const { getProxyTarget, setProxyTarget } = require('../utils/proxy-target')
 const dreaminaAccountManager = require('../utils/dreamina-account')
 const config = require('../config')
 
-let rrIndex = 0
-
+// 使用新的加权选账方法
 const pickAccount = () => {
-  const all = dreaminaAccountManager.getAllAccounts() || []
-  const available = all.filter(a => a && a.sessionid && !a.disabled)
-  if (available.length === 0) return null
-  rrIndex = (rrIndex + 1) % available.length
-  return available[rrIndex]
+  return dreaminaAccountManager.pickAccountByWeight()
 }
 
 const setCorsHeaders = (req, res) => {
@@ -146,7 +141,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
     // 触发条件：上游响应为 429/400/401/504
     // 注意：当请求体为流（如 multipart/octet），无法安全重试
     {
-      const retryStatuses = new Set([400, 401, 429, 504])
+      const retryStatuses = new Set([400, 401, 429, 500, 504])
       const maxRetries = Number.isFinite(config.proxyMaxRetry) ? config.proxyMaxRetry : 5
       const canRetryBody = axiosConfig.data !== req
 
@@ -232,9 +227,45 @@ router.all('*', apiKeyVerify, async (req, res) => {
         })
 
         if (retryStatuses.has(resp.status) && attempt < maxRetries && canRetryBody) {
+          // 记录失败
+          if (resp.status === 429 || resp.status === 500) {
+            // 429 和 500 都按连续失败处理
+            dreaminaAccountManager.recordFailure(accountForAttempt)
+          } else if (resp.status === 401) {
+            // 401 直接标记当日不可用
+            dreaminaAccountManager.recordAuthFailure(accountForAttempt)
+          }
           attempt += 1
           logger.warn(`上游状态 ${resp.status}，切换 sessionId 重试（第 ${attempt}/${maxRetries} 次）`, 'PROXY')
           continue
+        }
+
+        // 记录成功或最终结果
+        if (resp.status >= 200 && resp.status < 300) {
+          // 检测业务错误：HTTP 200 但响应体中 code !== 0
+          let isBusinessError = false
+          try {
+            const ct = String(resp.headers['content-type'] || resp.headers['Content-Type'] || '').toLowerCase()
+            if (ct.includes('json') && resp.data && typeof resp.data === 'object') {
+              const code = resp.data.code
+              if (typeof code === 'number' && code !== 0) {
+                isBusinessError = true
+                logger.warn(`业务错误: HTTP ${resp.status} 但 code=${code}, message=${resp.data.message || ''}`, 'PROXY')
+              }
+            }
+          } catch (_) { }
+
+          if (isBusinessError) {
+            dreaminaAccountManager.recordFailure(accountForAttempt)
+          } else {
+            dreaminaAccountManager.recordSuccess(accountForAttempt)
+          }
+        } else if (resp.status === 429 || resp.status === 500) {
+          // 最终仍是 429/500，记录失败
+          dreaminaAccountManager.recordFailure(accountForAttempt)
+        } else if (resp.status === 401) {
+          // 最终仍是 401，记录认证失败
+          dreaminaAccountManager.recordAuthFailure(accountForAttempt)
         }
 
         finalResp = resp

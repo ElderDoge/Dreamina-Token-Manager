@@ -145,8 +145,8 @@
                :class="{'ring-2 ring-indigo-500 ring-opacity-75': isSelected(token.email)}">
             <div class="absolute top-3 left-3 z-10">
               <label class="custom-checkbox cursor-pointer">
-                <input type="checkbox" 
-                       :checked="isSelected(token.email)" 
+                <input type="checkbox"
+                       :checked="isSelected(token.email)"
                        @change="toggleSelect(token.email)"
                        class="sr-only peer">
                 <div class="checkbox-icon w-6 h-6 bg-white/70 backdrop-blur-sm border-2 border-gray-300 rounded-lg peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-300 flex items-center justify-center shadow-sm hover:shadow">
@@ -155,6 +155,21 @@
                   </svg>
                 </div>
               </label>
+            </div>
+            <!-- 状态指示灯 -->
+            <div class="absolute top-3 right-3 z-10 flex items-center space-x-2">
+              <span class="w-3 h-3 rounded-full"
+                    :class="{
+                      'bg-green-500': !token.daily_unavailable_date,
+                      'bg-yellow-500': token.daily_unavailable_date
+                    }"
+                    :title="token.daily_unavailable_date ? '当日不可用' : '当日可用'"></span>
+              <span class="w-3 h-3 rounded-full"
+                    :class="{
+                      'bg-green-500': !token.overall_unavailable,
+                      'bg-red-500': token.overall_unavailable
+                    }"
+                    :title="token.overall_unavailable ? '整体不可用' : '状态正常'"></span>
             </div>
             <div class="absolute inset-0 bg-white/30 backdrop-blur-md border border-white/30"></div>
             <div class="relative p-6 flex flex-col gap-4">
@@ -187,6 +202,24 @@
                   </div>
                   <button @click="copyToClipboard(new Date(token.sessionid_expires * 1000).toLocaleString())" class="absolute right-2 opacity-0 hover:opacity-100 transition-opacity bg-blue-200 hover:bg-blue-300 rounded px-2 py-1 text-base">📋</button>
                 </div>
+                <!-- 权重显示 -->
+                <div class="relative flex items-center bg-blue-50/80 rounded-lg px-2 py-1">
+                  <div class="overflow-x-auto scrollbar-hide flex-1 flex items-center space-x-2">
+                    <span class="text-gray-700 min-w-[96px] text-left font-semibold">⚖️ Weight:</span>
+                    <div class="flex-1 flex items-center space-x-2">
+                      <div class="flex-1 bg-gray-200 rounded-full h-2">
+                        <div class="h-2 rounded-full transition-all duration-300"
+                             :class="{
+                               'bg-green-500': (token.weight ?? 100) >= 70,
+                               'bg-yellow-500': (token.weight ?? 100) >= 30 && (token.weight ?? 100) < 70,
+                               'bg-red-500': (token.weight ?? 100) < 30
+                             }"
+                             :style="{ width: (token.weight ?? 100) + '%' }"></div>
+                      </div>
+                      <span class="font-medium text-sm">{{ token.weight ?? 100 }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               
               <div class="pt-4 mt-auto border-t border-gray-200/50 space-y-2">
@@ -210,6 +243,12 @@
                 <button @click="deleteToken(token.email)"
                         class="w-full group-hover:bg-red-50 text-red-600 py-2 rounded-lg transition-all duration-300 hover:bg-red-100">
                   删除账号
+                </button>
+                <!-- 恢复按钮（整体不可用时显示） -->
+                <button v-if="token.overall_unavailable"
+                        @click="restoreAccount(token.email)"
+                        class="w-full bg-orange-50 text-orange-600 py-2 rounded-lg transition-all duration-300 hover:bg-orange-100 border border-orange-200">
+                  恢复可用性
                 </button>
               </div>
             </div>
@@ -636,6 +675,21 @@ const deleteToken = async (email) => {
   } catch (error) {
     console.error('删除账号失败:', error)
     showToast('删除账号失败: ' + error.message, 'error')
+  }
+}
+
+const restoreAccount = async (email) => {
+  try {
+    await axios.post('/api/dreamina/restoreAccount', { email }, {
+      headers: {
+        'Authorization': localStorage.getItem('apiKey') || ''
+      }
+    })
+    await getTokens()
+    showToast(`账号 ${email} 可用性已恢复`)
+  } catch (error) {
+    console.error('恢复账号可用性失败:', error)
+    showToast('恢复账号可用性失败: ' + error.message, 'error')
   }
 }
 

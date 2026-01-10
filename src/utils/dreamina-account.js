@@ -126,7 +126,8 @@ class DreaminaAccount {
     async loadAccounts() {
         try {
             const allAccounts = await this.dataPersistence.loadAccounts()
-            this.dreaminaAccounts = allAccounts.filter(account => account.sessionid || account.sessionid_expires)
+            // 保留有 sessionid 或有密码（可以登录获取 sessionid）的账号
+            this.dreaminaAccounts = allAccounts.filter(account => account.sessionid || account.password)
 
             if (this.dreaminaAccounts.length === 0) {
                 this.dreaminaAccounts = []
@@ -197,11 +198,16 @@ class DreaminaAccount {
 
                     await this.dataPersistence.saveAccount(account.email, {
                         password: updatedAccount.password,
-                        token: updatedAccount.token,
-                        expires: updatedAccount.expires,
                         sessionid: updatedAccount.sessionid,
                         sessionid_expires: updatedAccount.sessionid_expires,
-                        disabled: false
+                        disabled: false,
+                        // 保留可用性字段
+                        weight: account.weight,
+                        daily_consecutive_fails: account.daily_consecutive_fails,
+                        daily_unavailable_date: account.daily_unavailable_date,
+                        last_fail_date: account.last_fail_date,
+                        consecutive_fail_days: account.consecutive_fail_days,
+                        overall_unavailable: account.overall_unavailable
                     })
 
                     // 更新内存中的状态
@@ -279,7 +285,14 @@ class DreaminaAccount {
                     password,
                     sessionid,
                     sessionid_expires,
-                    disabled: false
+                    disabled: false,
+                    // 可用性字段
+                    weight: 100,
+                    daily_consecutive_fails: 0,
+                    daily_unavailable_date: null,
+                    last_fail_date: null,
+                    consecutive_fail_days: 0,
+                    overall_unavailable: false
                 }
 
                 this.dreaminaAccounts.push(newAccount)
@@ -332,11 +345,16 @@ class DreaminaAccount {
 
             await this.dataPersistence.saveAccount(email, {
                 password: updatedAccount.password,
-                token: updatedAccount.token,
-                expires: updatedAccount.expires,
                 sessionid: updatedAccount.sessionid,
                 sessionid_expires: updatedAccount.sessionid_expires,
-                disabled: false
+                disabled: false,
+                // 保留可用性字段
+                weight: account.weight,
+                daily_consecutive_fails: account.daily_consecutive_fails,
+                daily_unavailable_date: account.daily_unavailable_date,
+                last_fail_date: account.last_fail_date,
+                consecutive_fail_days: account.consecutive_fail_days,
+                overall_unavailable: account.overall_unavailable
             })
 
             account.disabled = false
@@ -360,6 +378,245 @@ class DreaminaAccount {
             accounts: sessionIdStats,
             initialized: this.isInitialized
         }
+    }
+
+    // ==================== 可用性管理 ====================
+
+    /**
+     * 记录调用成功，恢复权重并重置连续失败计数
+     */
+    async recordSuccess(account) {
+        if (!account) return
+
+        const acc = this.dreaminaAccounts.find(a => a.email === account.email)
+        if (!acc) return
+
+        // 重置当日连续失败计数
+        acc.daily_consecutive_fails = 0
+
+        // 恢复权重
+        const oldWeight = typeof acc.weight === 'number' ? acc.weight : 100
+        const weightIncrease = config.availabilityWeightOnSuccess || 5
+        acc.weight = Math.min(oldWeight + weightIncrease, 100)
+
+        if (acc.weight !== oldWeight) {
+            logger.info(`账户 ${acc.email} 权重变化: ${oldWeight} -> ${acc.weight} (+${acc.weight - oldWeight})`, 'AVAILABILITY')
+        }
+
+        // 异步持久化，不阻塞
+        this.dataPersistence.saveAccount(acc.email, acc).catch(e =>
+            logger.error(`保存账户可用性状态失败: ${acc.email}`, 'AVAILABILITY', '', e)
+        )
+    }
+
+    /**
+     * 记录认证失败（401），直接标记当日不可用
+     */
+    async recordAuthFailure(account) {
+        if (!account) return
+
+        const acc = this.dreaminaAccounts.find(a => a.email === account.email)
+        if (!acc) return
+
+        const today = this._getNowInTimezoneParts().dateStr
+        const maxFailDays = config.availabilityMaxFailDays || 2
+
+        // 直接标记为当日不可用
+        acc.weight = 0
+        acc.daily_unavailable_date = today
+        logger.warn(`账户 ${acc.email} 认证失败 (401)，标记为当日不可用`, 'AVAILABILITY')
+
+        // 更新连续失败天数
+        if (acc.last_fail_date) {
+            const lastDate = new Date(acc.last_fail_date)
+            const todayDate = new Date(today)
+            const diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24))
+
+            if (diffDays === 1) {
+                acc.consecutive_fail_days = (acc.consecutive_fail_days || 0) + 1
+            } else if (diffDays > 1) {
+                acc.consecutive_fail_days = 1
+            }
+        } else {
+            acc.consecutive_fail_days = 1
+        }
+
+        acc.last_fail_date = today
+
+        // 检查是否应标记为整体不可用
+        if (acc.consecutive_fail_days >= maxFailDays) {
+            acc.overall_unavailable = true
+            logger.error(`账户 ${acc.email} 连续 ${acc.consecutive_fail_days} 天不可用，标记为整体不可用`, 'AVAILABILITY')
+        }
+
+        // 异步持久化
+        this.dataPersistence.saveAccount(acc.email, acc).catch(e =>
+            logger.error(`保存账户可用性状态失败: ${acc.email}`, 'AVAILABILITY', '', e)
+        )
+    }
+
+    /**
+     * 记录调用失败（429/500），降低权重并增加连续失败计数
+     */
+    async recordFailure(account) {
+        if (!account) return
+
+        const acc = this.dreaminaAccounts.find(a => a.email === account.email)
+        if (!acc) return
+
+        const today = this._getNowInTimezoneParts().dateStr
+        const threshold = config.availabilityDailyFailThreshold || 5
+        const weightDecrease = config.availabilityWeightOnFail || 10
+        const maxFailDays = config.availabilityMaxFailDays || 2
+
+        // 降低权重
+        const oldWeight = typeof acc.weight === 'number' ? acc.weight : 100
+        acc.weight = Math.max(oldWeight - weightDecrease, 0)
+        logger.info(`账户 ${acc.email} 权重变化: ${oldWeight} -> ${acc.weight} (-${oldWeight - acc.weight})`, 'AVAILABILITY')
+
+        // 增加当日连续失败计数
+        acc.daily_consecutive_fails = (acc.daily_consecutive_fails || 0) + 1
+
+        // 检查是否达到当日不可用阈值
+        if (acc.daily_consecutive_fails >= threshold && acc.daily_unavailable_date !== today) {
+            acc.daily_unavailable_date = today
+            acc.weight = 0
+            logger.warn(`账户 ${acc.email} 当日连续失败 ${threshold} 次，标记为当日不可用`, 'AVAILABILITY')
+
+            // 更新连续失败天数
+            if (acc.last_fail_date) {
+                const lastDate = new Date(acc.last_fail_date)
+                const todayDate = new Date(today)
+                const diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24))
+
+                if (diffDays === 1) {
+                    // 连续天
+                    acc.consecutive_fail_days = (acc.consecutive_fail_days || 0) + 1
+                } else if (diffDays > 1) {
+                    // 非连续，重置
+                    acc.consecutive_fail_days = 1
+                }
+                // diffDays === 0 表示同一天，不增加
+            } else {
+                acc.consecutive_fail_days = 1
+            }
+
+            acc.last_fail_date = today
+
+            // 检查是否应标记为整体不可用
+            if (acc.consecutive_fail_days >= maxFailDays) {
+                acc.overall_unavailable = true
+                logger.error(`账户 ${acc.email} 连续 ${acc.consecutive_fail_days} 天不可用，标记为整体不可用`, 'AVAILABILITY')
+            }
+        }
+
+        // 异步持久化，不阻塞
+        this.dataPersistence.saveAccount(acc.email, acc).catch(e =>
+            logger.error(`保存账户可用性状态失败: ${acc.email}`, 'AVAILABILITY', '', e)
+        )
+    }
+
+    /**
+     * 日切重置：清除过期的当日不可用状态和连续失败计数
+     */
+    resetDailyAvailability() {
+        const today = this._getNowInTimezoneParts().dateStr
+        let resetCount = 0
+
+        for (const acc of this.dreaminaAccounts) {
+            let needsSave = false
+
+            // 重置当日不可用状态（如果不是今天标记的）
+            if (acc.daily_unavailable_date && acc.daily_unavailable_date !== today) {
+                acc.daily_unavailable_date = null
+                // 恢复权重到默认值（如果不是整体不可用）
+                if (!acc.overall_unavailable) {
+                    acc.weight = 100
+                }
+                needsSave = true
+                resetCount++
+            }
+
+            // 重置当日连续失败计数（跨天时需要重置）
+            if (acc.daily_consecutive_fails > 0 && acc.daily_unavailable_date !== today) {
+                acc.daily_consecutive_fails = 0
+                needsSave = true
+            }
+
+            if (needsSave) {
+                // 异步持久化
+                this.dataPersistence.saveAccount(acc.email, acc).catch(() => {})
+            }
+        }
+
+        if (resetCount > 0) {
+            logger.info(`日切重置：${resetCount} 个账户的当日可用性已重置`, 'AVAILABILITY')
+        }
+    }
+
+    /**
+     * 手动恢复账号可用性
+     */
+    async restoreAccount(email) {
+        const acc = this.dreaminaAccounts.find(a => a.email === email)
+        if (!acc) {
+            logger.error(`未找到账户: ${email}`, 'AVAILABILITY')
+            return false
+        }
+
+        acc.weight = 100
+        acc.daily_consecutive_fails = 0
+        acc.daily_unavailable_date = null
+        acc.consecutive_fail_days = 0
+        acc.overall_unavailable = false
+
+        await this.dataPersistence.saveAccount(email, acc)
+        logger.success(`账户 ${email} 可用性已恢复`, 'AVAILABILITY')
+        return true
+    }
+
+    /**
+     * 获取可用于选账的账户列表（过滤整体不可用和当日不可用）
+     */
+    getAvailableAccounts() {
+        const today = this._getNowInTimezoneParts().dateStr
+
+        // 先做日切重置
+        this.resetDailyAvailability()
+
+        return this.dreaminaAccounts.filter(acc =>
+            acc.sessionid &&
+            !acc.disabled &&
+            !acc.overall_unavailable &&
+            acc.daily_unavailable_date !== today
+        )
+    }
+
+    /**
+     * 根据权重选择账户
+     */
+    pickAccountByWeight() {
+        const available = this.getAvailableAccounts()
+        if (available.length === 0) return null
+
+        // 计算总权重
+        const totalWeight = available.reduce((sum, acc) => sum + (typeof acc.weight === 'number' ? acc.weight : 100), 0)
+        if (totalWeight === 0) {
+            // 所有权重都为0，随机选一个
+            return available[Math.floor(Math.random() * available.length)]
+        }
+
+        // 加权随机选择
+        let random = Math.random() * totalWeight
+        for (const acc of available) {
+            random -= (typeof acc.weight === 'number' ? acc.weight : 100)
+            if (random <= 0) {
+                return acc
+            }
+        }
+
+        // 兜底返回第一个
+        return available[0]
     }
 
     async _delay(ms) {

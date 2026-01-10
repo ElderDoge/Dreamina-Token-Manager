@@ -53,6 +53,11 @@ const config = {
     browserProxyUsername: (process.env.BROWSER_PROXY_USERNAME || '').trim(),
     browserProxyPassword: (process.env.BROWSER_PROXY_PASSWORD || '').trim(),
     batchAddConcurrency: parseInt(process.env.BATCH_ADD_CONCURRENCY, 10) || 5,
+    // 账号可用性配置
+    availabilityDailyFailThreshold: parseInt(process.env.AVAILABILITY_DAILY_FAIL_THRESHOLD, 10) || 5,  // 连续 429 多少次标记当日不可用
+    availabilityWeightOnFail: parseInt(process.env.AVAILABILITY_WEIGHT_ON_FAIL, 10) || 10,             // 429 时权重减少值
+    availabilityWeightOnSuccess: parseInt(process.env.AVAILABILITY_WEIGHT_ON_SUCCESS, 10) || 5,       // 成功时权重恢复值
+    availabilityMaxFailDays: parseInt(process.env.AVAILABILITY_MAX_FAIL_DAYS, 10) || 2,               // 连续失败多少天标记整体不可用
 }
 
 module.exports = config

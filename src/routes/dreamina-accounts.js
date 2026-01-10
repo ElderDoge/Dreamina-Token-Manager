@@ -25,7 +25,14 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
       password: account.password,
       sessionid: account.sessionid,
       sessionid_expires: account.sessionid_expires,
-      disabled: account.disabled
+      disabled: account.disabled,
+      // 可用性字段
+      weight: account.weight ?? 100,
+      daily_consecutive_fails: account.daily_consecutive_fails || 0,
+      daily_unavailable_date: account.daily_unavailable_date || null,
+      last_fail_date: account.last_fail_date || null,
+      consecutive_fail_days: account.consecutive_fail_days || 0,
+      overall_unavailable: account.overall_unavailable || false
     }))
 
     res.json({ total, page, pageSize, data: accounts })
@@ -215,6 +222,32 @@ router.post('/forceRefreshAllAccounts', adminKeyVerify, async (req, res) => {
     res.json({ message: 'Dreamina 强制刷新完成', refreshedCount, totalAccounts: dreaminaAccountManager.getAllAccounts().length })
   } catch (error) {
     logger.error('强制刷新 Dreamina 账号 SessionID 失败', 'DREAMINA', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// 恢复账号可用性
+router.post('/restoreAccount', adminKeyVerify, async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ error: '邮箱不能为空' })
+    }
+
+    const exists = dreaminaAccountManager.getAllAccounts().find(item => item.email === email)
+    if (!exists) {
+      return res.status(404).json({ error: '账号不存在' })
+    }
+
+    const success = await dreaminaAccountManager.restoreAccount(email)
+
+    if (success) {
+      res.json({ message: '账号可用性已恢复', email })
+    } else {
+      res.status(500).json({ error: '恢复账号可用性失败' })
+    }
+  } catch (error) {
+    logger.error('恢复账号可用性失败', 'DREAMINA', '', error)
     res.status(500).json({ error: error.message })
   }
 })
