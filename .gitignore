@@ -13,3 +13,4 @@ pkg_dist/
 .spec-workflow
 *.md
 !README.md
+.ace-tool/

@@ -1,18 +1,18 @@
 services:
   dreamina:
-    image: ghcr.io/gloryhry/dreamina-token-manager:latest
+    image: ghcr.io/elderdoge/dreamina-token-manager:latest
     container_name: dreamina-token-manager
     restart: always
     # Playwright/Chromium 在 Docker 中更稳定的共享内存配置
     shm_size: "1gb"
     ports:
-      - "3000:3000"  # 主机:容器
+      - "3103:3000"  # 主机:容器
     # 优先从 .env 读取环境变量，便于统一管理机密与配置
     env_file:
       - .env
-    environment:
+    # environment:
       # 如需修改对外端口，请同时调整上面的 ports 中主机端口
-      SERVICE_PORT: "3000"
+      # SERVICE_PORT: "3000"
       # 其余配置（API_KEY、DATA_SAVE_MODE、REDIS_URL、LOG_LEVEL、ENABLE_FILE_LOG 等）
       # 推荐放入 .env 管理，这里无需重复定义
     volumes:
@@ -24,7 +24,12 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
-
+    # 添加内部网络
+    networks:
+      - local-api-network
+networks:
+  local-api-network:
+    external: true
 # 使用说明：
 # 1) 将 .env.example 复制为 .env 并按需修改变量（尤其是 API_KEY）。
 # 2) 如需启用 Redis 模式：在 .env 设置 DATA_SAVE_MODE=redis 与 REDIS_URL=redis://<host>:6379。
