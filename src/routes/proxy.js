@@ -155,7 +155,8 @@ router.all('*', apiKeyVerify, async (req, res) => {
           setCorsHeaders(req, res)
           return res.status(503).json({ error: 'no available account' })
         }
-        const sid = accountForAttempt.sessionid.startsWith('us-') ? accountForAttempt.sessionid : `us-${accountForAttempt.sessionid}`
+        const regionPrefix = `${config.region}-`
+        const sid = accountForAttempt.sessionid.startsWith(regionPrefix) ? accountForAttempt.sessionid : `${regionPrefix}${accountForAttempt.sessionid}`
         headers.authorization = `Bearer ${sid}`
 
         // 请求日志（含 sessionId 前缀）

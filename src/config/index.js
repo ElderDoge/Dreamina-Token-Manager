@@ -58,6 +58,8 @@ const config = {
     availabilityWeightOnFail: parseInt(process.env.AVAILABILITY_WEIGHT_ON_FAIL, 10) || 10,             // 429 时权重减少值
     availabilityWeightOnSuccess: parseInt(process.env.AVAILABILITY_WEIGHT_ON_SUCCESS, 10) || 5,       // 成功时权重恢复值
     availabilityMaxFailDays: parseInt(process.env.AVAILABILITY_MAX_FAIL_DAYS, 10) || 2,               // 连续失败多少天标记整体不可用
+    // 区域前缀配置 (us/hk/jp/sg)
+    region: (process.env.REGION || 'us').toLowerCase(),
 }
 
 module.exports = config
