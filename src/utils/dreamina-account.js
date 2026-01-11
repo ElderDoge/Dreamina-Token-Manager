@@ -12,6 +12,8 @@ class DreaminaAccount {
         this.isInitialized = false
         this._dailyTimer = null
         this._lastDailyRunDate = null
+        this._accountListRefreshTimer = null
+        this._isReloading = false
         this.processingEmails = new Set()
 
         this._initialize()
@@ -30,6 +32,9 @@ class DreaminaAccount {
 
             // 设置每日定时刷新（按指定时区与时间）
             this._setupDailyRefresh()
+
+            // 设置账号列表定时重载（用于多实例同步）
+            this._setupAccountListRefresh()
 
             this.isInitialized = true
             logger.success(`Dreamina 账户管理器初始化完成，共加载 ${this.dreaminaAccounts.length} 个账户`, 'DREAMINA')
@@ -62,6 +67,91 @@ class DreaminaAccount {
             logger.info(`已启用每日刷新调度：${timeStr} @ ${config.timeZone || 'UTC'}`, 'SCHEDULE', '⏰')
         } catch (e) {
             logger.error('每日刷新调度初始化失败', 'SCHEDULE', '', e)
+        }
+    }
+
+    _setupAccountListRefresh() {
+        const interval = config.accountListRefreshInterval
+        if (!interval || interval <= 0) {
+            logger.info('账号列表刷新已禁用 (ACCOUNT_LIST_REFRESH_INTERVAL <= 0)', 'SYNC')
+            return
+        }
+
+        if (this._accountListRefreshTimer) {
+            clearInterval(this._accountListRefreshTimer)
+        }
+
+        this._accountListRefreshTimer = setInterval(
+            () => this._reloadAccountList(),
+            interval * 1000
+        )
+        logger.info(`已启用账号列表定时刷新，间隔 ${interval} 秒`, 'SYNC', '🔄')
+    }
+
+    async _reloadAccountList() {
+        if (this._isReloading) return
+        this._isReloading = true
+
+        try {
+            const freshAccounts = await this.dataPersistence.loadAccounts()
+
+            // 空数组保护：如果 Redis 返回空但当前有账号，可能是连接问题，跳过本次同步
+            if (freshAccounts.length === 0 && this.dreaminaAccounts.length > 0) {
+                logger.warn('账号列表同步: Redis 返回空列表，跳过本次同步（可能是连接问题）', 'SYNC')
+                return
+            }
+
+            const validFresh = freshAccounts.filter(a => a.sessionid || a.password)
+
+            const currentEmails = new Set(this.dreaminaAccounts.map(a => a.email))
+            const freshEmails = new Set(validFresh.map(a => a.email))
+
+            // 计算新增和删除
+            const added = validFresh.filter(a => !currentEmails.has(a.email))
+            const removed = this.dreaminaAccounts.filter(a => !freshEmails.has(a.email))
+
+            // 更新已有账号的字段（从 Redis 同步）
+            for (const freshAcc of validFresh) {
+                const existing = this.dreaminaAccounts.find(a => a.email === freshAcc.email)
+                if (existing) {
+                    existing.password = freshAcc.password
+                    existing.weight = freshAcc.weight
+                    existing.daily_consecutive_fails = freshAcc.daily_consecutive_fails
+                    existing.daily_unavailable_date = freshAcc.daily_unavailable_date
+                    existing.last_fail_date = freshAcc.last_fail_date
+                    existing.consecutive_fail_days = freshAcc.consecutive_fail_days
+                    existing.overall_unavailable = freshAcc.overall_unavailable
+                    existing.disabled = freshAcc.disabled
+                    existing.sessionid = freshAcc.sessionid
+                    existing.sessionid_expires = freshAcc.sessionid_expires
+                }
+            }
+
+            // 添加新账号
+            for (const acc of added) {
+                this.dreaminaAccounts.push(acc)
+            }
+
+            // 移除已删除的账号
+            for (const acc of removed) {
+                const idx = this.dreaminaAccounts.findIndex(a => a.email === acc.email)
+                if (idx !== -1) {
+                    this.dreaminaAccounts.splice(idx, 1)
+                }
+            }
+
+            // 对新增账号进行 sessionid 验证和登录
+            if (added.length > 0) {
+                await this._validateAndCleanSessionIds()
+            }
+
+            if (added.length > 0 || removed.length > 0) {
+                logger.info(`账号列表同步: +${added.length} -${removed.length}，当前共 ${this.dreaminaAccounts.length} 个`, 'SYNC')
+            }
+        } catch (e) {
+            logger.error('账号列表重载失败', 'SYNC', '', e)
+        } finally {
+            this._isReloading = false
         }
     }
 
@@ -631,6 +721,10 @@ class DreaminaAccount {
         if (this._dailyTimer) {
             clearInterval(this._dailyTimer)
             this._dailyTimer = null
+        }
+        if (this._accountListRefreshTimer) {
+            clearInterval(this._accountListRefreshTimer)
+            this._accountListRefreshTimer = null
         }
 
         logger.info('Dreamina 账户管理器已清理资源', 'DREAMINA', '🧹')

@@ -60,6 +60,11 @@ const config = {
     availabilityMaxFailDays: parseInt(process.env.AVAILABILITY_MAX_FAIL_DAYS, 10) || 2,               // 连续失败多少天标记整体不可用
     // 区域前缀配置 (us/hk/jp/sg)
     region: (process.env.REGION || 'us').toLowerCase(),
+    // 账号列表刷新间隔（秒），用于多实例同步，默认 600 秒（10 分钟），设为 0 禁用
+    accountListRefreshInterval: (() => {
+        const val = parseInt(process.env.ACCOUNT_LIST_REFRESH_INTERVAL, 10)
+        return isNaN(val) ? 600 : val
+    })(),
 }
 
 module.exports = config
