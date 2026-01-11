@@ -753,6 +753,16 @@ class DreaminaAccount {
         // 如果今天已经重置过，跳过
         if (this._lastDailyResetDate === today) return
 
+        // 只在北京时间 00:00-00:05 窗口内执行日切，避免新实例启动时误触发
+        const now = new Date()
+        const beijingHour = (now.getUTCHours() + 8) % 24
+        const beijingMinute = now.getUTCMinutes()
+        if (beijingHour !== 0 || beijingMinute > 5) {
+            // 不在日切窗口内，标记今天已处理（跳过），避免后续重复检查
+            this._lastDailyResetDate = today
+            return
+        }
+
         this._lastDailyResetDate = today
         let resetCount = 0
 
