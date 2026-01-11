@@ -9,7 +9,7 @@ const dailyStats = require('../utils/daily-stats')
 const config = require('../config')
 
 // 使用新的加权选账方法
-const pickAccount = () => {
+const pickAccount = async () => {
   return dreaminaAccountManager.pickAccountByWeight()
 }
 
@@ -151,7 +151,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
       let lastStatusForLog = null
 
       while (true) {
-        const accountForAttempt = pickAccount()
+        const accountForAttempt = await pickAccount()
         if (!accountForAttempt || !accountForAttempt.sessionid) {
           setCorsHeaders(req, res)
           return res.status(503).json({ error: 'no available account' })

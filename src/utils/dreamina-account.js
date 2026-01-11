@@ -2,6 +2,7 @@ const config = require('../config/index.js')
 const DataPersistence = require('./data-persistence')
 const DreaminaTokenManager = require('./dreamina-token-manager')
 const { logger } = require('./logger')
+const dailyStats = require('./daily-stats')
 
 class DreaminaAccount {
     constructor() {
@@ -685,27 +686,42 @@ class DreaminaAccount {
     /**
      * 根据权重选择账户
      */
-    pickAccountByWeight() {
+    async pickAccountByWeight() {
         const available = this.getAvailableAccounts()
         if (available.length === 0) return null
 
-        // 计算总权重
-        const totalWeight = available.reduce((sum, acc) => sum + (typeof acc.weight === 'number' ? acc.weight : 100), 0)
+        const emails = available.map(acc => acc.email)
+        let stats = {}
+        try {
+            stats = await dailyStats.batchGet(emails)
+        } catch (e) {
+            logger.warn(`获取调用统计失败，退化为纯权重选择: ${e.message}`, 'AVAILABILITY')
+        }
+        const threshold = config.callCountThreshold
+        const weightDecrease = config.callCountWeightDecrease
+        const minWeight = config.callCountWeightMin
+
+        const effectiveWeights = available.map(acc => {
+            const baseWeight = typeof acc.weight === 'number' ? acc.weight : 100
+            const calls = stats[acc.email]?.daily_call_total || 0
+            if (calls > threshold) {
+                const decreased = baseWeight - (calls - threshold) * weightDecrease
+                return Math.min(baseWeight, Math.max(decreased, minWeight))
+            }
+            return baseWeight
+        })
+
+        const totalWeight = effectiveWeights.reduce((sum, w) => sum + w, 0)
         if (totalWeight === 0) {
-            // 所有权重都为0，随机选一个
             return available[Math.floor(Math.random() * available.length)]
         }
 
-        // 加权随机选择
         let random = Math.random() * totalWeight
-        for (const acc of available) {
-            random -= (typeof acc.weight === 'number' ? acc.weight : 100)
-            if (random <= 0) {
-                return acc
-            }
+        for (let i = 0; i < available.length; i++) {
+            random -= effectiveWeights[i]
+            if (random <= 0) return available[i]
         }
 
-        // 兜底返回第一个
         return available[0]
     }
 

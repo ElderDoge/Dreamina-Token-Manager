@@ -65,6 +65,13 @@ const config = {
     parseInt(process.env.AVAILABILITY_WEIGHT_ON_SUCCESS, 10) || 5, // 成功时权重恢复值
   availabilityMaxFailDays:
     parseInt(process.env.AVAILABILITY_MAX_FAIL_DAYS, 10) || 2, // 连续失败多少天标记整体不可用
+  // 调用次数降权配置
+  callCountThreshold:
+    parseInt(process.env.CALL_COUNT_THRESHOLD, 10) || 10,
+  callCountWeightDecrease:
+    parseInt(process.env.CALL_COUNT_WEIGHT_DECREASE, 10) || 5,
+  callCountWeightMin:
+    parseInt(process.env.CALL_COUNT_WEIGHT_MIN, 10) || 10,
   // 区域前缀配置 (us/hk/jp/sg)
   region: (process.env.REGION || "us").toLowerCase(),
   // 账号列表刷新间隔（秒），用于多实例同步，默认 300 秒（5 分钟），设为 0 禁用
