@@ -165,7 +165,8 @@ router.all('*', apiKeyVerify, async (req, res) => {
         logger.network(`REQ[${attempt}] ${req.method} -> ${targetUrl} [${_sidPrefix}]`, 'PROXY')
 
         // 统计：发起请求前 total+1（确保网络错误也被计入）
-        dailyStats.incrTotal(accountForAttempt.email).catch(err => {
+        // incrementDailyCallTotal 会同时更新内存和 Redis
+        dreaminaAccountManager.incrementDailyCallTotal(accountForAttempt.email).catch(err => {
           logger.error(`统计 total 失败: ${err.message}`, 'DAILY-STATS')
         })
 

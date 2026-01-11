@@ -74,10 +74,10 @@ const config = {
     parseInt(process.env.CALL_COUNT_WEIGHT_MIN, 10) || 10,
   // 区域前缀配置 (us/hk/jp/sg)
   region: (process.env.REGION || "us").toLowerCase(),
-  // 账号列表刷新间隔（秒），用于多实例同步，默认 300 秒（5 分钟），设为 0 禁用
+  // 账号列表刷新间隔（秒），用于多实例同步，默认 60 秒（1 分钟），设为 0 禁用
   accountListRefreshInterval: (() => {
     const val = parseInt(process.env.ACCOUNT_LIST_REFRESH_INTERVAL, 10);
-    return isNaN(val) ? 300 : val;
+    return isNaN(val) ? 60 : val;
   })(),
 };
 

@@ -11,7 +11,7 @@ const { logger } = require('./logger')
 const REDIS_CONFIG = {
   maxRetries: 3,
   connectTimeout: 10000,
-  commandTimeout: 5000,
+  commandTimeout: 15000,
   retryDelayOnFailover: 200,
   maxRetriesPerRequest: 3,
   enableOfflineQueue: false,

@@ -92,8 +92,24 @@ const batchGet = async (emails) => {
   return result
 }
 
+/**
+ * 获取单个账号的调用总次数
+ * @param {string} email 账号邮箱
+ * @returns {Promise<number>} 调用总次数
+ */
+const getTotal = async (email) => {
+  if (config.dataSaveMode !== 'redis') return 0
+
+  const redis = require('./redis')
+  const client = await redis.ensureConnection()
+
+  const value = await client.hget(STATS_KEY, `${email}:total`)
+  return parseInt(value) || 0
+}
+
 module.exports = {
   incrTotal,
   incrSuccess,
-  batchGet
+  batchGet,
+  getTotal
 }
