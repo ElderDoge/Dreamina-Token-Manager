@@ -1,10 +1,6 @@
 <template>
-  <video id="video-background" autoplay loop muted>
-    <source src="./assets/background.mp4" type="video/mp4">
-  </video>
-
+  <div id="static-background"></div>
   <router-view></router-view>
-
 </template>
 
 <script setup>
@@ -21,13 +17,13 @@ html {
   position: relative;
 }
 
-#video-background {
-  position: absolute;
+#static-background {
+  position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   z-index: -1;
-  object-fit: cover;
+  background: linear-gradient(135deg, #e0e7ff 0%, #fae8ff 50%, #fef3c7 100%);
 }
 </style>

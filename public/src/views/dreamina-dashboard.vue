@@ -62,26 +62,23 @@
           <div class="flex items-center space-x-2">
             <span class="text-gray-700">每页显示:</span>
             <select v-model="pageSize" @change="changePageSize" class="rounded-lg border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300">
-              <option :value="10">10</option>
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option>
+              <option v-for="opt in pageSizeOptions" :key="opt" :value="opt">{{ opt }}</option>
             </select>
           </div>
           <!-- 视图切换 -->
           <div class="flex items-center p-1 bg-gray-200/80 rounded-lg">
-            <button @click="viewMode = 'card'"
-                    :class="['px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200', viewMode === 'card' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-800']"
-                    title="卡片视图">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zM11 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z" />
-              </svg>
-            </button>
-            <button @click="viewMode = 'list'"
+            <button @click="switchViewMode('list')"
                     :class="['px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200', viewMode === 'list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-800']"
                     title="列表视图">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <button @click="switchViewMode('card')"
+                    :class="['px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200', viewMode === 'card' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-800']"
+                    title="卡片视图">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zM11 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z" />
               </svg>
             </button>
           </div>
@@ -429,7 +426,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 
 // 视图模式
-const viewMode = ref('card')
+const viewMode = ref('list')
 
 const tokens = ref([])
 const showAddModal = ref(false)
@@ -445,9 +442,29 @@ const batchAccounts = ref('')
 const allTokens = ref([])
 const serverTotal = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(100)  // 列表视图默认100
 const totalItems = computed(() => serverTotal.value)
 const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)))
+
+// 分页选项根据视图模式动态调整
+const pageSizeOptions = computed(() => {
+  return viewMode.value === 'list' ? [20, 50, 100, 200, 500] : [10, 20, 50, 100]
+})
+
+// 切换视图模式时重置分页
+const switchViewMode = (mode) => {
+  if (viewMode.value === mode) return
+  viewMode.value = mode
+  // 设置对应视图的默认分页
+  const defaultSize = mode === 'list' ? 100 : 50
+  if (pageSize.value !== defaultSize) {
+    pageSize.value = defaultSize
+    currentPage.value = 1
+    selectedTokens.value = []
+    selectAll.value = false
+    getTokens(1, defaultSize)
+  }
+}
 
 // 多选相关
 const selectedTokens = ref([])
