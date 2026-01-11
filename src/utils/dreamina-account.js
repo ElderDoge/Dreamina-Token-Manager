@@ -524,7 +524,23 @@ class DreaminaAccount {
 
         const updatedAccount = await this.tokenManager.refreshSessionId(account)
         if (updatedAccount) {
+            // 刷新成功：重置权重（视为没有失败过），但保留调用次数降权
+            let newWeight = 100
+            const calls = account.daily_call_total || 0
+            const threshold = config.callCountThreshold || 0
+            const weightDecrease = config.callCountWeightDecrease || 0
+            const minWeight = config.callCountWeightMin || 0
+            if (threshold > 0 && calls > threshold) {
+                newWeight = Math.max(newWeight - (calls - threshold) * weightDecrease, minWeight)
+            }
+
             updatedAccount.disabled = false
+            updatedAccount.weight = newWeight
+            updatedAccount.daily_consecutive_fails = 0
+            updatedAccount.daily_unavailable_date = null
+            updatedAccount.consecutive_fail_days = 0
+            updatedAccount.overall_unavailable = false
+            updatedAccount.daily_call_total = calls
 
             await this._withAccountListLock(async () => {
                 const index = this.dreaminaAccounts.findIndex(acc => acc.email === email)
@@ -538,16 +554,15 @@ class DreaminaAccount {
                 sessionid: updatedAccount.sessionid,
                 sessionid_expires: updatedAccount.sessionid_expires,
                 disabled: false,
-                // 保留可用性字段
-                weight: account.weight,
-                daily_consecutive_fails: account.daily_consecutive_fails,
-                daily_unavailable_date: account.daily_unavailable_date,
+                weight: newWeight,
+                daily_consecutive_fails: 0,
+                daily_unavailable_date: null,
                 last_fail_date: account.last_fail_date,
-                consecutive_fail_days: account.consecutive_fail_days,
-                overall_unavailable: account.overall_unavailable
+                consecutive_fail_days: 0,
+                overall_unavailable: false
             })
 
-            account.disabled = false
+            logger.info(`账户 ${email} 刷新成功，权重重置为 ${newWeight}`, 'AVAILABILITY')
 
             return true
         }
