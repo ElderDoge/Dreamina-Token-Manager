@@ -195,19 +195,29 @@ router.all('*', apiKeyVerify, async (req, res) => {
         if (resp.status >= 200 && resp.status < 300) {
           // 检测业务错误：HTTP 200 但响应体中 code !== 0
           let isBusinessError = false
+          let businessErrorMessage = ''
           try {
             const ct = String(resp.headers['content-type'] || resp.headers['Content-Type'] || '').toLowerCase()
             if (ct.includes('json') && resp.data && typeof resp.data === 'object') {
               const code = resp.data.code
+              const message = typeof resp.data.message === 'string' ? resp.data.message : ''
               if (typeof code === 'number' && code !== 0) {
                 isBusinessError = true
-                logger.warn(`业务错误: HTTP ${resp.status} 但 code=${code}, message=${resp.data.message || ''}`, 'PROXY')
+                businessErrorMessage = message
+                logger.warn(`业务错误: HTTP ${resp.status} 但 code=${code}, message=${message}`, 'PROXY')
               }
             }
           } catch (_) { }
 
           if (isBusinessError) {
-            dreaminaAccountManager.recordFailure(accountForAttempt)
+            const msgCodeMatch = /错误码[:：]\s*(\d+)/.exec(businessErrorMessage)
+            const msgCode = msgCodeMatch ? Number(msgCodeMatch[1]) : null
+            if (msgCode === 1006) {
+              // 错误码 1006 = 积分不足，直接标记当日不可用
+              dreaminaAccountManager.recordAuthFailure(accountForAttempt)
+            } else {
+              dreaminaAccountManager.recordFailure(accountForAttempt)
+            }
           } else {
             dreaminaAccountManager.recordSuccess(accountForAttempt)
             // 统计：成功时 success+1

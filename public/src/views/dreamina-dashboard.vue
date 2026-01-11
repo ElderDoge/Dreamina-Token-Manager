@@ -56,17 +56,35 @@
         </div>
       </div>
 
-      <!-- 分页控制区 -->
+      <!-- 分页与视图控制区 -->
       <div class="flex justify-between items-center px-4 mb-4">
-        <div class="flex items-center space-x-2">
-          <span class="text-gray-700">每页显示:</span>
-          <select v-model="pageSize" @change="changePageSize" class="rounded-lg border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300">
-            <option :value="10">10</option>
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-            <option :value="100">100</option>
-            <option :value="1000">全部</option>
-          </select>
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-gray-700">每页显示:</span>
+            <select v-model="pageSize" @change="changePageSize" class="rounded-lg border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300">
+              <option :value="10">10</option>
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+            </select>
+          </div>
+          <!-- 视图切换 -->
+          <div class="flex items-center p-1 bg-gray-200/80 rounded-lg">
+            <button @click="viewMode = 'card'"
+                    :class="['px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200', viewMode === 'card' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-800']"
+                    title="卡片视图">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zM11 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z" />
+              </svg>
+            </button>
+            <button @click="viewMode = 'list'"
+                    :class="['px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200', viewMode === 'list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-800']"
+                    title="列表视图">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="flex space-x-2 items-center">
           <span class="text-gray-700">共 {{ totalItems }} 项</span>
@@ -138,7 +156,8 @@
 
       <!-- Token列表 -->
       <div class="max-h-[calc(75vh)] overflow-y-auto pr-2 scrollbar-hidden">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+        <!-- 卡片视图 -->
+        <div v-if="viewMode === 'card'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
           <div v-for="token in displayedTokens" 
                :key="token.email" 
                class="token-card group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-2xl pt-4"
@@ -245,6 +264,59 @@
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 列表视图 -->
+        <div v-if="viewMode === 'list'" class="overflow-x-auto mx-4">
+          <div class="bg-white/50 rounded-xl shadow-sm border border-gray-200/80 min-w-[700px]">
+          <!-- 表头 -->
+          <div class="grid grid-cols-[40px,1fr,180px,80px,100px,100px] gap-x-2 px-4 py-3 border-b border-gray-200/80 bg-gray-50/80 rounded-t-xl text-sm font-semibold text-gray-600">
+            <div class="flex items-center justify-center">
+              <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            </div>
+            <div>Email</div>
+            <div>过期时间</div>
+            <div class="text-center">权重</div>
+            <div class="text-center">今日调用</div>
+            <div class="text-center">操作</div>
+          </div>
+          <!-- 数据行 -->
+          <div v-for="token in displayedTokens" :key="token.email"
+               class="grid grid-cols-[40px,1fr,180px,80px,100px,100px] gap-x-2 px-4 py-2.5 items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
+               :class="{'bg-indigo-50/50': isSelected(token.email)}">
+            <!-- 复选框 -->
+            <div class="flex items-center justify-center">
+              <input type="checkbox" :checked="isSelected(token.email)" @change="toggleSelect(token.email)" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            </div>
+            <!-- Email + 状态 -->
+            <div class="flex items-center space-x-2 min-w-0">
+              <span class="w-2 h-2 rounded-full flex-shrink-0" :class="{'bg-green-500': !token.daily_unavailable_date, 'bg-yellow-500': token.daily_unavailable_date}"></span>
+              <span class="w-2 h-2 rounded-full flex-shrink-0" :class="{'bg-green-500': !token.overall_unavailable, 'bg-red-500': token.overall_unavailable}"></span>
+              <span class="truncate text-gray-800 text-sm" :title="token.email">{{ token.email }}</span>
+            </div>
+            <!-- 过期时间 -->
+            <div class="text-sm text-gray-600">{{ new Date(token.sessionid_expires * 1000).toLocaleString() }}</div>
+            <!-- 权重 -->
+            <div class="text-center text-sm font-medium"
+                 :class="{'text-green-600': (token.weight ?? 100) >= 70, 'text-yellow-600': (token.weight ?? 100) >= 30 && (token.weight ?? 100) < 70, 'text-red-600': (token.weight ?? 100) < 30}">
+              {{ token.weight ?? 100 }}
+            </div>
+            <!-- 今日调用 -->
+            <div class="text-center text-sm text-gray-600">{{ token.daily_call_success || 0 }}/{{ token.daily_call_total || 0 }}</div>
+            <!-- 操作 -->
+            <div class="flex items-center justify-center space-x-1">
+              <button @click="refreshToken(token.email)" :disabled="refreshingTokens.includes(token.email)" class="p-1.5 rounded hover:bg-green-100 text-gray-400 hover:text-green-600 transition-colors" title="刷新令牌">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" :class="{'animate-spin': refreshingTokens.includes(token.email)}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
+              </button>
+              <button @click="deleteToken(token.email)" class="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors" title="删除账号">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+              </button>
+              <button v-if="token.overall_unavailable" @click="restoreAccount(token.email)" class="p-1.5 rounded hover:bg-orange-100 text-gray-400 hover:text-orange-600 transition-colors" title="恢复可用性">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" /></svg>
+              </button>
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -356,6 +428,9 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 
+// 视图模式
+const viewMode = ref('card')
+
 const tokens = ref([])
 const showAddModal = ref(false)
 const addMode = ref('single')
@@ -368,9 +443,10 @@ const batchAccounts = ref('')
 
 // 分页相关
 const allTokens = ref([])
+const serverTotal = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
-const totalItems = computed(() => allTokens.value.length)
+const totalItems = computed(() => serverTotal.value)
 const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)))
 
 // 多选相关
@@ -447,33 +523,51 @@ const deleteSelected = async () => {
 
 const deleteAllAccounts = async () => {
   try {
-    const deletePromises = allTokens.value.map(token => 
-      axios.delete('/api/dreamina/deleteAccount', {
-        data: { email: token.email },
-        headers: {
-          'Authorization': localStorage.getItem('apiKey') || ''
-        }
+    // 分页获取所有账号后删除
+    let page = 1
+    const batchSize = 100
+    let hasMore = true
+    let deletedCount = 0
+
+    while (hasMore) {
+      const res = await axios.get('/api/dreamina/getAllAccounts', {
+        params: { page, pageSize: batchSize },
+        headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
       })
-    )
-    
-    await Promise.all(deletePromises)
+
+      const accounts = res.data.data || []
+      if (accounts.length === 0) {
+        hasMore = false
+        break
+      }
+
+      const deletePromises = accounts.map(token =>
+        axios.delete('/api/dreamina/deleteAccount', {
+          data: { email: token.email },
+          headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
+        })
+      )
+      await Promise.all(deletePromises)
+      deletedCount += accounts.length
+
+      if (accounts.length < batchSize) {
+        hasMore = false
+      }
+    }
+
     showDeleteAllConfirm.value = false
     await getTokens()
     selectedTokens.value = []
     selectAll.value = false
-    showToast('所有账号已删除')
+    showToast(`已删除 ${deletedCount} 个账号`)
   } catch (error) {
     console.error('删除所有账号失败:', error)
     showToast('删除所有账号失败: ' + error.message, 'error')
   }
 }
 
-// 当前页显示的tokens
-const displayedTokens = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return allTokens.value.slice(start, end)
-})
+// 当前页显示的tokens（服务端分页，直接返回后端数据）
+const displayedTokens = computed(() => allTokens.value)
 
 const changePage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
@@ -481,6 +575,7 @@ const changePage = (page) => {
     // 重置选择状态
     selectedTokens.value = []
     selectAll.value = false
+    getTokens(page, pageSize.value)
   }
 }
 
@@ -489,6 +584,7 @@ const changePageSize = () => {
   // 重置选择状态
   selectedTokens.value = []
   selectAll.value = false
+  getTokens(1, pageSize.value)
 }
 
 const showToast = (message, type = 'success') => {
@@ -511,13 +607,12 @@ const copyToClipboard = async (text) => {
   }
 }
 
-const getTokens = async () => {
+const getTokens = async (page = currentPage.value, size = pageSize.value) => {
   try {
-    // 始终获取完整的账号列表以确保数据同步
     const fullRes = await axios.get('/api/dreamina/getAllAccounts', {
       params: {
-        page: 1,
-        pageSize: 1000
+        page,
+        pageSize: size
       },
       headers: {
         'Authorization': localStorage.getItem('apiKey') || ''
@@ -525,10 +620,12 @@ const getTokens = async () => {
     })
 
     allTokens.value = fullRes.data.data
+    serverTotal.value = fullRes.data.total ?? 0
 
-    // 如果当前页超出了总页数，重置到第一页
+    // 如果当前页超出了总页数，重置到第一页并重新获取
     if (currentPage.value > totalPages.value && totalPages.value > 0) {
       currentPage.value = 1
+      return getTokens(1, size)
     }
 
     // 重置选择状态
@@ -686,33 +783,54 @@ const restoreAccount = async (email) => {
   }
 }
 
-const exportAccounts = () => {
-  if (allTokens.value.length === 0) {
-    showToast('没有可导出的账号', 'error')
-    return
+const exportAccounts = async () => {
+  try {
+    // 分页获取所有账号
+    let page = 1
+    const batchSize = 500
+    let allAccounts = []
+    let hasMore = true
+
+    while (hasMore) {
+      const res = await axios.get('/api/dreamina/getAllAccounts', {
+        params: { page, pageSize: batchSize },
+        headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
+      })
+
+      const accounts = res.data.data || []
+      allAccounts = allAccounts.concat(accounts)
+
+      if (accounts.length < batchSize) {
+        hasMore = false
+      } else {
+        page++
+      }
+    }
+
+    if (allAccounts.length === 0) {
+      showToast('没有可导出的账号', 'error')
+      return
+    }
+
+    const content = allAccounts.map(token => `${token.email}:${token.password}`).join('\n')
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'dreamina_accounts.txt'
+    document.body.appendChild(link)
+    link.click()
+
+    setTimeout(() => {
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }, 100)
+
+    showToast(`导出完成，共 ${allAccounts.length} 个账号`)
+  } catch (error) {
+    console.error('导出失败:', error)
+    showToast('导出失败: ' + error.message, 'error')
   }
-  
-  // 构建导出内容，格式为"账号:密码"，每行一个
-  const content = allTokens.value.map(token => `${token.email}:${token.password}`).join('\n')
-  
-  // 创建Blob对象
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-  
-  // 创建下载链接并触发下载
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'dreamina_accounts.txt'
-  document.body.appendChild(link)
-  link.click()
-  
-  // 清理
-  setTimeout(() => {
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }, 100)
-  
-  showToast('导出完成')
 }
 
 const saveProxyTarget = async () => {
