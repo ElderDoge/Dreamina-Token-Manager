@@ -14,16 +14,54 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1
     const pageSize = parseInt(req.query.pageSize) || 1000
-    const start = (page - 1) * pageSize
+    const sortBy = req.query.sortBy || ''
+    const sortDir = req.query.sortDir === 'desc' ? 'desc' : 'asc'
+    const allowedSortFields = ['email', 'sessionid_expires', 'weight', 'daily_call_total']
 
-    const allAccounts = dreaminaAccountManager.getAllAccounts()
+    if (sortBy && !allowedSortFields.includes(sortBy)) {
+      return res.status(400).json({ error: `invalid sortBy: ${sortBy}` })
+    }
+
+    const allAccounts = [...dreaminaAccountManager.getAllAccounts()]
     const total = allAccounts.length
 
+    // 排序需要 daily_call_total 时，先获取全部 stats
+    let allStats = {}
+    if (sortBy === 'daily_call_total') {
+      const allEmails = allAccounts.map(a => a.email)
+      allStats = await dailyStats.batchGet(allEmails)
+    }
+
+    // 排序
+    if (sortBy) {
+      allAccounts.sort((a, b) => {
+        let valA, valB
+        if (sortBy === 'daily_call_total') {
+          valA = allStats[a.email]?.daily_call_total || 0
+          valB = allStats[b.email]?.daily_call_total || 0
+        } else if (sortBy === 'weight') {
+          valA = a.weight ?? 100
+          valB = b.weight ?? 100
+        } else {
+          valA = a[sortBy] ?? ''
+          valB = b[sortBy] ?? ''
+        }
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortDir === 'asc' ? valA - valB : valB - valA
+        }
+        return sortDir === 'asc'
+          ? String(valA).localeCompare(String(valB))
+          : String(valB).localeCompare(String(valA))
+      })
+    }
+
+    // 分页
+    const start = (page - 1) * pageSize
     const paginatedAccounts = allAccounts.slice(start, start + pageSize)
 
-    // 批量获取当日统计数据
+    // 批量获取当日统计数据（如果排序时已获取全部，则复用）
     const emails = paginatedAccounts.map(a => a.email)
-    const stats = await dailyStats.batchGet(emails)
+    const stats = sortBy === 'daily_call_total' ? allStats : await dailyStats.batchGet(emails)
 
     const accounts = paginatedAccounts.map(account => ({
       email: account.email,
@@ -43,7 +81,7 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
       daily_call_success: stats[account.email]?.daily_call_success || 0
     }))
 
-    res.json({ total, page, pageSize, data: accounts })
+    res.json({ total, page, pageSize, sortBy, sortDir, data: accounts })
   } catch (error) {
     logger.error('获取 Dreamina 账号列表失败', 'DREAMINA', '', error)
     res.status(500).json({ error: error.message })

@@ -272,10 +272,30 @@
             <div class="flex items-center justify-center">
               <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
             </div>
-            <div>Email</div>
-            <div>过期时间</div>
-            <div class="text-center">权重</div>
-            <div class="text-center">今日调用</div>
+            <div class="flex items-center cursor-pointer select-none hover:text-indigo-600 transition-colors" @click="toggleSort('email')">
+              <span>Email</span>
+              <svg v-if="sortState.key === 'email'" class="w-4 h-4 ml-1 transition-transform" :class="sortState.dir === 'desc' ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="flex items-center cursor-pointer select-none hover:text-indigo-600 transition-colors" @click="toggleSort('sessionid_expires')">
+              <span>过期时间</span>
+              <svg v-if="sortState.key === 'sessionid_expires'" class="w-4 h-4 ml-1 transition-transform" :class="sortState.dir === 'desc' ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="flex items-center justify-center cursor-pointer select-none hover:text-indigo-600 transition-colors" @click="toggleSort('weight')">
+              <span>权重</span>
+              <svg v-if="sortState.key === 'weight'" class="w-4 h-4 ml-1 transition-transform" :class="sortState.dir === 'desc' ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="flex items-center justify-center cursor-pointer select-none hover:text-indigo-600 transition-colors" @click="toggleSort('daily_call_total')">
+              <span>今日调用</span>
+              <svg v-if="sortState.key === 'daily_call_total'" class="w-4 h-4 ml-1 transition-transform" :class="sortState.dir === 'desc' ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </div>
             <div class="text-center">操作</div>
           </div>
           <!-- 数据行 -->
@@ -445,6 +465,19 @@ const currentPage = ref(1)
 const pageSize = ref(100)  // 列表视图默认100
 const totalItems = computed(() => serverTotal.value)
 const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)))
+
+// 排序相关
+const sortState = ref({ key: '', dir: 'asc' })
+const toggleSort = (field) => {
+  if (sortState.value.key === field) {
+    sortState.value.dir = sortState.value.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortState.value.key = field
+    sortState.value.dir = 'asc'
+  }
+  currentPage.value = 1
+  getTokens(1, pageSize.value)
+}
 
 // 分页选项根据视图模式动态调整
 const pageSizeOptions = computed(() => {
@@ -626,11 +659,13 @@ const copyToClipboard = async (text) => {
 
 const getTokens = async (page = currentPage.value, size = pageSize.value) => {
   try {
+    const params = { page, pageSize: size }
+    if (sortState.value.key) {
+      params.sortBy = sortState.value.key
+      params.sortDir = sortState.value.dir
+    }
     const fullRes = await axios.get('/api/dreamina/getAllAccounts', {
-      params: {
-        page,
-        pageSize: size
-      },
+      params,
       headers: {
         'Authorization': localStorage.getItem('apiKey') || ''
       }
@@ -829,7 +864,7 @@ const exportAccounts = async () => {
       return
     }
 
-    const content = allAccounts.map(token => `${token.email}:${token.password}`).join('\n')
+    const content = allAccounts.map(token => `${token.email}:${token.password}:${token.sessionid}`).join('\n')
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
