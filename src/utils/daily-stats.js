@@ -26,36 +26,48 @@ const getNextMidnightBeijing = () => {
 
 const STATS_KEY = 'stats:daily'
 
+// Lua 脚本：HINCRBY + 仅在 key 没有 TTL 时设置过期时间
+// 避免每次调用都延长 TTL，确保数据在北京时间 00:00 准确过期
+const LUA_INCR_AND_EXPIRE = `
+local key = KEYS[1]
+local field = ARGV[1]
+local expireAt = tonumber(ARGV[2])
+local delta = tonumber(ARGV[3])
+local value = redis.call('HINCRBY', key, field, delta)
+local ttl = redis.call('TTL', key)
+if ttl < 0 then
+  redis.call('EXPIREAT', key, expireAt)
+end
+return value
+`
+
 /**
- * 增加调用总次数（原子操作：HINCRBY + EXPIREAT）
+ * 原子递增 Hash 字段，仅在 key 无 TTL 时设置过期时间
+ * @param {string} field Hash 字段名
+ */
+const incrementWithDailyExpire = async (field) => {
+  const redis = require('./redis')
+  const client = await redis.ensureConnection()
+  const expireAt = getNextMidnightBeijing()
+  await client.eval(LUA_INCR_AND_EXPIRE, 1, STATS_KEY, field, expireAt, 1)
+}
+
+/**
+ * 增加调用总次数（原子操作：HINCRBY + 条件 EXPIREAT）
  * @param {string} email 账号邮箱
  */
 const incrTotal = async (email) => {
   if (config.dataSaveMode !== 'redis') return
-
-  const redis = require('./redis')
-  const client = await redis.ensureConnection()
-
-  await client.multi()
-    .hincrby(STATS_KEY, `${email}:total`, 1)
-    .expireat(STATS_KEY, getNextMidnightBeijing())
-    .exec()
+  await incrementWithDailyExpire(`${email}:total`)
 }
 
 /**
- * 增加成功次数（原子操作：HINCRBY + EXPIREAT）
+ * 增加成功次数（原子操作：HINCRBY + 条件 EXPIREAT）
  * @param {string} email 账号邮箱
  */
 const incrSuccess = async (email) => {
   if (config.dataSaveMode !== 'redis') return
-
-  const redis = require('./redis')
-  const client = await redis.ensureConnection()
-
-  await client.multi()
-    .hincrby(STATS_KEY, `${email}:success`, 1)
-    .expireat(STATS_KEY, getNextMidnightBeijing())
-    .exec()
+  await incrementWithDailyExpire(`${email}:success`)
 }
 
 /**
