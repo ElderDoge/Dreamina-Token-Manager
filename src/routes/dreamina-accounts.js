@@ -298,5 +298,15 @@ router.post('/restoreAccount', adminKeyVerify, async (req, res) => {
   }
 })
 
+router.post('/refreshUnavailableAccounts', adminKeyVerify, async (req, res) => {
+  try {
+    const { total, refreshedCount, failedCount } = await dreaminaAccountManager.refreshUnavailableAccounts()
+    res.json({ message: 'Dreamina 不可用账号刷新完成', total, refreshedCount, failedCount })
+  } catch (error) {
+    logger.error('刷新不可用账号失败', 'DREAMINA', '', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 module.exports = router
 

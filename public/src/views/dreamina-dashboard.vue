@@ -42,6 +42,23 @@
             </span>
             <span v-else>强制刷新</span>
           </button>
+          <button @click="refreshUnavailableAccounts"
+                  :disabled="isRefreshingUnavailable"
+                  :class="[
+                    'action-button font-bold px-4 py-2 rounded-xl shadow-sm transition-all duration-300 transform active:translate-y-0',
+                    isRefreshingUnavailable
+                      ? 'bg-orange-400 text-white border-orange-400 refreshing-button-orange cursor-not-allowed transform-none'
+                      : 'macaron-orange-button text-orange-800 hover:-translate-y-1'
+                  ]">
+            <span v-if="isRefreshingUnavailable" class="flex items-center space-x-2">
+              <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>刷新失效中...</span>
+            </span>
+            <span v-else>刷新失效</span>
+          </button>
           <button @click="exportAccounts"
                   class="action-button font-bold border border-yellow-200 bg-yellow-50 text-yellow-900 px-4 py-2 rounded-xl shadow-sm hover:bg-yellow-100 hover:border-yellow-400 transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0">
             导出账号
@@ -507,6 +524,7 @@ const showDeleteAllConfirm = ref(false)
 // 刷新相关
 const isRefreshingAll = ref(false)
 const isForceRefreshingAll = ref(false)
+const isRefreshingUnavailable = ref(false)
 const refreshingTokens = ref([])
 // 透传目标
 const proxyTarget = ref('')
@@ -799,6 +817,30 @@ const forceRefreshAllAccounts = async () => {
     showToast('强制刷新失败: ' + error.message, 'error')
   } finally {
     isForceRefreshingAll.value = false
+  }
+}
+
+const refreshUnavailableAccounts = async () => {
+  if (isRefreshingUnavailable.value) return
+
+  if (!confirm('确定要刷新所有失效账号吗？')) return
+
+  isRefreshingUnavailable.value = true
+
+  try {
+    const response = await axios.post('/api/dreamina/refreshUnavailableAccounts', {}, {
+      headers: {
+        'Authorization': localStorage.getItem('apiKey') || ''
+      }
+    })
+
+    await getTokens()
+    showToast(`失效账号刷新完成，成功刷新了 ${response.data.refreshedCount} 个账号`)
+  } catch (error) {
+    console.error('刷新失效账号失败:', error)
+    showToast(error.message, 'error')
+  } finally {
+    isRefreshingUnavailable.value = false
   }
 }
 
@@ -1246,6 +1288,34 @@ onUnmounted(() => {
   border-color: #f472b6;
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(236, 72, 153, 0.2);
+}
+
+/* 马卡龙橙色按钮样式 */
+.macaron-orange-button {
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border: 1px solid #fed7aa;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.macaron-orange-button:hover {
+  background: linear-gradient(135deg, #ffedd5, #fed7aa);
+  border-color: #fb923c;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(251, 146, 60, 0.2);
+}
+
+/* 刷新中橙色按钮动画 */
+.refreshing-button-orange {
+  animation: pulse-orange 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-orange {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 /* 响应式优化 */

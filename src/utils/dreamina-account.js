@@ -829,6 +829,30 @@ class DreaminaAccount {
     }
 
     /**
+     * 刷新不可用账号
+     */
+    async refreshUnavailableAccounts() {
+        const today = this._getBeijingDateStr()
+        const targets = this.dreaminaAccounts.filter(account =>
+            account.overall_unavailable === true || account.daily_unavailable_date === today
+        )
+
+        let refreshedCount = 0
+        let failedCount = 0
+
+        for (const account of targets) {
+            const success = await this.refreshAccount(account.email)
+            if (success) {
+                refreshedCount++
+            } else {
+                failedCount++
+            }
+        }
+
+        return { total: targets.length, refreshedCount, failedCount }
+    }
+
+    /**
      * 递增账号的当日调用计数（同时更新内存和 Redis）
      * @param {string} email 账号邮箱
      */
