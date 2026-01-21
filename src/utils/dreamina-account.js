@@ -529,10 +529,10 @@ class DreaminaAccount {
             const calls = account.daily_call_total || 0
             const threshold = config.callCountThreshold || 0
             const weightDecrease = config.callCountWeightDecrease || 0
-            const minWeight = config.callCountWeightMin || 0
             if (threshold > 0 && calls > threshold) {
-                newWeight = Math.max(newWeight - (calls - threshold) * weightDecrease, minWeight)
+                newWeight = newWeight - (calls - threshold) * weightDecrease
             }
+            newWeight = this._applyWeightFloor(newWeight)
 
             updatedAccount.disabled = false
             updatedAccount.weight = newWeight
@@ -588,6 +588,13 @@ class DreaminaAccount {
     // ==================== 可用性管理 ====================
 
     /**
+     * 应用全局权重下限
+     */
+    _applyWeightFloor(weight) {
+        return Math.max(weight, config.weightMin)
+    }
+
+    /**
      * 记录调用成功，恢复权重并重置连续失败计数
      */
     async recordSuccess(account) {
@@ -608,12 +615,11 @@ class DreaminaAccount {
         const calls = acc.daily_call_total || 0
         const threshold = config.callCountThreshold
         const weightDecrease = config.callCountWeightDecrease
-        const minWeight = config.callCountWeightMin
         if (calls > threshold) {
-            newWeight = Math.max(newWeight - (calls - threshold) * weightDecrease, minWeight)
+            newWeight = newWeight - (calls - threshold) * weightDecrease
         }
 
-        acc.weight = newWeight
+        acc.weight = this._applyWeightFloor(newWeight)
 
         if (acc.weight !== oldWeight) {
             logger.info(`账户 ${acc.email} 权重变化: ${oldWeight} -> ${acc.weight}`, 'AVAILABILITY')
@@ -626,7 +632,7 @@ class DreaminaAccount {
     }
 
     /**
-     * 记录认证失败（401），直接标记当日不可用
+     * 记录认证失败（401），降低权重并根据配置决定是否标记当日不可用
      */
     async recordAuthFailure(account) {
         if (!account) return
@@ -637,10 +643,16 @@ class DreaminaAccount {
         const today = this._getBeijingDateStr()
         const maxFailDays = config.availabilityMaxFailDays || 2
 
-        // 直接标记为当日不可用
-        acc.weight = 0
-        acc.daily_unavailable_date = today
-        logger.warn(`账户 ${acc.email} 认证失败 (401)，标记为当日不可用`, 'AVAILABILITY')
+        // 降低权重到全局下限
+        acc.weight = this._applyWeightFloor(0)
+
+        // 根据配置决定是否标记为当日不可用
+        if (config.enableDailyUnavailable) {
+            acc.daily_unavailable_date = today
+            logger.warn(`账户 ${acc.email} 认证失败 (401)，标记为当日不可用`, 'AVAILABILITY')
+        } else {
+            logger.warn(`账户 ${acc.email} 认证失败 (401)，权重降至 ${acc.weight}`, 'AVAILABILITY')
+        }
 
         // 更新连续失败天数
         if (acc.last_fail_date) {
@@ -687,27 +699,25 @@ class DreaminaAccount {
 
         // 降低权重
         const oldWeight = typeof acc.weight === 'number' ? acc.weight : 100
-        let newWeight = Math.max(oldWeight - failWeightDecrease, 0)
+        let newWeight = oldWeight - failWeightDecrease
 
         // 根据当日调用次数进一步调整权重
         const calls = acc.daily_call_total || 0
         const callThreshold = config.callCountThreshold
         const callWeightDecrease = config.callCountWeightDecrease
-        const minWeight = config.callCountWeightMin
         if (calls > callThreshold) {
-            newWeight = Math.max(newWeight - (calls - callThreshold) * callWeightDecrease, minWeight)
+            newWeight = newWeight - (calls - callThreshold) * callWeightDecrease
         }
 
-        acc.weight = newWeight
+        acc.weight = this._applyWeightFloor(newWeight)
         logger.info(`账户 ${acc.email} 权重变化: ${oldWeight} -> ${acc.weight}`, 'AVAILABILITY')
 
         // 增加当日连续失败计数
         acc.daily_consecutive_fails = (acc.daily_consecutive_fails || 0) + 1
 
-        // 检查是否达到当日不可用阈值
-        if (acc.daily_consecutive_fails >= failThreshold && acc.daily_unavailable_date !== today) {
+        // 检查是否达到当日不可用阈值（仅在启用时标记）
+        if (config.enableDailyUnavailable && acc.daily_consecutive_fails >= failThreshold && acc.daily_unavailable_date !== today) {
             acc.daily_unavailable_date = today
-            acc.weight = 0
             logger.warn(`账户 ${acc.email} 当日连续失败 ${failThreshold} 次，标记为当日不可用`, 'AVAILABILITY')
 
             // 更新连续失败天数
