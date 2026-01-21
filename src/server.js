@@ -9,6 +9,7 @@ const fs = require('fs')
 const verifyRouter = require('./routes/verify.js')
 const dreaminaAccountsRouter = require('./routes/dreamina-accounts.js')
 const proxyRouter = require('./routes/proxy.js')
+const adminRedisRouter = require('./routes/admin-redis.js')
 const { addClient: addSseClient } = require('./utils/sse')
 const { validateApiKey } = require('./middlewares/authorization')
 
@@ -25,6 +26,7 @@ app.use(cors())
 // API路由
 app.use(verifyRouter)
 app.use('/api/dreamina', dreaminaAccountsRouter)
+app.use('/admin/redis', adminRedisRouter)
 
 // SSE 事件流（用于前端接收异步任务完成通知）
 app.get('/api/events', (req, res) => {

@@ -1001,6 +1001,40 @@ class DreaminaAccount {
 
         logger.info('Dreamina 账户管理器已清理资源', 'DREAMINA', '🧹')
     }
+
+    /**
+     * 切换 Redis 数据库
+     * @param {number} dbIndex - 数据库编号 (0-15)
+     * @returns {Promise<Object>} 切换结果
+     */
+    async switchRedisDb(dbIndex) {
+        if (config.dataSaveMode !== 'redis') {
+            throw new Error('当前数据保存模式不是 Redis')
+        }
+
+        const startTime = Date.now()
+        const redisClient = require('./redis')
+
+        // 切换数据库
+        await redisClient.switchDatabase(dbIndex)
+
+        // 清空当前账号缓存
+        this.dreaminaAccounts = []
+        this.processingEmails.clear()
+        this._lastAccountListRefresh = 0
+
+        // 重新加载账号
+        await this.loadAccounts()
+
+        const duration = Date.now() - startTime
+        logger.success(`Redis 数据库切换完成，加载 ${this.dreaminaAccounts.length} 个账户，耗时 ${duration}ms`, 'DREAMINA')
+
+        return {
+            currentDb: dbIndex,
+            accountsReloaded: this.dreaminaAccounts.length,
+            durationMs: duration
+        }
+    }
 }
 
 const dreaminaAccountManager = new DreaminaAccount()

@@ -63,12 +63,19 @@
                   class="action-button font-bold border border-yellow-200 bg-yellow-50 text-yellow-900 px-4 py-2 rounded-xl shadow-sm hover:bg-yellow-100 hover:border-yellow-400 transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0">
             导出账号
           </button>
-          <div class="flex items-center space-x-2 w-full sm:w-auto">
-            <input v-model="proxyTarget" placeholder="透传目标，例如 https://jimeng.985100.xyz" class="flex-1 sm:w-72 rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <button @click="saveProxyTarget"
-                    class="action-button font-bold border border-blue-200 bg-blue-50 text-blue-900 px-3 py-2 rounded-xl shadow-sm hover:bg-blue-100 hover:border-blue-400 transition-all duration-300">
-              保存目标
-            </button>
+          <div class="flex items-center space-x-2">
+            <svg v-if="isSwitchingDb" class="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <select
+              v-model="selectedDb"
+              @change="switchDatabase"
+              :disabled="isSwitchingDb"
+              class="rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm transition-all duration-300"
+            >
+              <option v-for="db in availableDbs" :key="db" :value="db">DB {{ db }}</option>
+            </select>
           </div>
         </div>
       </div>
@@ -526,8 +533,11 @@ const isRefreshingAll = ref(false)
 const isForceRefreshingAll = ref(false)
 const isRefreshingUnavailable = ref(false)
 const refreshingTokens = ref([])
-// 透传目标
-const proxyTarget = ref('')
+
+// 数据库切换相关
+const availableDbs = Array.from({ length: 16 }, (_, i) => i)
+const selectedDb = ref(null)
+const isSwitchingDb = ref(false)
 
 // Toast 通知
 const toast = ref({
@@ -927,28 +937,39 @@ const exportAccounts = async () => {
   }
 }
 
-const saveProxyTarget = async () => {
+const getCurrentDb = async () => {
   try {
-    await axios.post('/api/proxy/target', { target: proxyTarget.value }, {
+    const res = await axios.get('/admin/redis/db', {
       headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
     })
-    showToast('目标已保存')
+    selectedDb.value = res.data?.currentDb ?? 0
   } catch (error) {
-    console.error('保存透传目标失败:', error)
-    showToast('保存透传目标失败: ' + (error?.message || ''), 'error')
+    console.error('获取当前数据库失败:', error)
+    selectedDb.value = 0
+  }
+}
+
+const switchDatabase = async () => {
+  if (selectedDb.value === null) return
+
+  isSwitchingDb.value = true
+  try {
+    await axios.post('/admin/redis/db', { db: selectedDb.value }, {
+      headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
+    })
+    showToast(`已切换到数据库 ${selectedDb.value}`)
+    await getTokens()
+  } catch (error) {
+    console.error('切换数据库失败:', error)
+    showToast('切换数据库失败: ' + (error?.message || ''), 'error')
+    await getCurrentDb()
+  } finally {
+    isSwitchingDb.value = false
   }
 }
 
 onMounted(() => {
-  // 加载透传目标
-  ;(async () => {
-    try {
-      const res = await axios.get('/api/proxy/target', {
-        headers: { 'Authorization': localStorage.getItem('apiKey') || '' }
-      })
-      proxyTarget.value = res.data?.target || ''
-    } catch (_) {}
-  })()
+  getCurrentDb()
   getTokens()
   try {
     const key = localStorage.getItem('apiKey') || ''

@@ -27,8 +27,36 @@ let connectionPromise = null
 let lastActivity = 0
 let idleTimer = null
 
+// 数据库切换状态
+let currentDbIndex = 0
+let switchInProgress = false
+let pendingSwitchPromise = null
+
 // 空闲超时时间 (5分钟)
 const IDLE_TIMEOUT = 5 * 60 * 1000
+
+/**
+ * 从 Redis URL 中解析数据库编号
+ */
+const parseDbFromUrl = (url) => {
+  if (!url) return 0
+  try {
+    const match = url.match(/\/(\d+)(?:\?|$)/)
+    if (match && match[1]) {
+      const db = parseInt(match[1], 10)
+      return (db >= 0 && db <= 15) ? db : 0
+    }
+  } catch (e) {
+    logger.warn('解析 Redis URL 数据库编号失败', 'REDIS')
+  }
+  return 0
+}
+
+// 初始化数据库编号
+currentDbIndex = parseDbFromUrl(config.redisURL)
+if (currentDbIndex > 0) {
+  logger.info(`从 REDIS_URL 解析到数据库编号: ${currentDbIndex}`, 'REDIS')
+}
 
 /**
  * 判断是否需要TLS
@@ -179,6 +207,11 @@ const ensureConnection = async () => {
   if (config.dataSaveMode !== 'redis') {
     logger.error('当前数据保存模式不是Redis', 'REDIS')
     throw new Error('当前数据保存模式不是Redis')
+  }
+
+  // 等待切换完成
+  if (switchInProgress && pendingSwitchPromise) {
+    await pendingSwitchPromise
   }
 
   if (!redis || redis.status !== 'ready') {
@@ -359,6 +392,73 @@ const cleanup = async () => {
   await disconnectRedis()
 }
 
+/**
+ * 切换 Redis 数据库
+ * @param {number} dbIndex - 数据库编号 (0-15)
+ * @returns {Promise<number>} 切换后的数据库编号
+ */
+const switchDatabase = async (dbIndex) => {
+  // 参数校验
+  if (!Number.isInteger(dbIndex) || dbIndex < 0 || dbIndex > 15) {
+    throw new Error(`无效的数据库编号: ${dbIndex}，必须在 0-15 之间`)
+  }
+
+  // 如果已经是目标数据库，直接返回
+  if (currentDbIndex === dbIndex) {
+    logger.info(`已在数据库 ${dbIndex}，无需切换`, 'REDIS')
+    return currentDbIndex
+  }
+
+  // 如果正在切换，等待完成
+  if (switchInProgress && pendingSwitchPromise) {
+    await pendingSwitchPromise
+    return currentDbIndex
+  }
+
+  // 开始切换
+  switchInProgress = true
+  pendingSwitchPromise = (async () => {
+    try {
+      const startTime = Date.now()
+      logger.info(`开始切换 Redis 数据库: ${currentDbIndex} -> ${dbIndex}`, 'REDIS', '🔄')
+
+      // 确保连接可用
+      const client = await connectRedis()
+
+      // 执行 SELECT 命令
+      await client.select(dbIndex)
+
+      // 更新当前数据库编号
+      const oldDb = currentDbIndex
+      currentDbIndex = dbIndex
+
+      const duration = Date.now() - startTime
+      logger.success(`Redis 数据库切换成功: ${oldDb} -> ${dbIndex}，耗时 ${duration}ms`, 'REDIS')
+
+      return currentDbIndex
+    } catch (error) {
+      logger.error(`Redis 数据库切换失败: ${currentDbIndex} -> ${dbIndex}`, 'REDIS', '', error)
+      throw error
+    } finally {
+      switchInProgress = false
+      pendingSwitchPromise = null
+    }
+  })()
+
+  return pendingSwitchPromise
+}
+
+/**
+ * 获取当前数据库信息
+ * @returns {Object} 当前数据库信息
+ */
+const getCurrentDb = () => {
+  return {
+    currentDb: currentDbIndex,
+    switchInProgress
+  }
+}
+
 // 创建兼容的Redis客户端对象
 const redisClient = {
   getAllAccounts,
@@ -368,6 +468,8 @@ const redisClient = {
   getConnectionStatus,
   cleanup,
   ensureConnection,
+  switchDatabase,
+  getCurrentDb,
 
   // 直接Redis命令的代理方法（按需连接）
   async hset(key, ...args) {
