@@ -4,6 +4,24 @@ const DreaminaTokenManager = require('./dreamina-token-manager')
 const { logger } = require('./logger')
 const dailyStats = require('./daily-stats')
 
+const { VALID_REGIONS } = config
+
+function normalizeRegion(region) {
+    const normalized = (region || '').toLowerCase().trim()
+    if (!VALID_REGIONS.has(normalized)) {
+        throw new Error(`Invalid region: ${normalized || '(empty)'}`)
+    }
+    return normalized
+}
+
+function isPasswordEmpty(password) {
+    return !password || password.trim() === ''
+}
+
+function canAutoLogin(account) {
+    return !isPasswordEmpty(account.password) && account.region !== 'cn'
+}
+
 class DreaminaAccount {
     constructor() {
         this.dataPersistence = new DataPersistence()
@@ -157,6 +175,7 @@ class DreaminaAccount {
                     const existing = this.dreaminaAccounts.find(a => a.email === freshAcc.email)
                     if (existing) {
                         existing.password = freshAcc.password
+                        existing.region = freshAcc.region
                         existing.weight = freshAcc.weight
                         existing.daily_consecutive_fails = freshAcc.daily_consecutive_fails
                         existing.daily_unavailable_date = freshAcc.daily_unavailable_date
@@ -325,7 +344,11 @@ class DreaminaAccount {
         for (const account of this.dreaminaAccounts) {
             if (account.sessionid && this.tokenManager.validateSessionId(account.sessionid, account.sessionid_expires)) {
                 validAccounts.push(account)
-            } else if (account.email && account.password) {
+            } else if (account.region === 'cn') {
+                // CN 账号过期：不标记 disabled，不尝试登录，保留账号
+                logger.info(`CN 账号 SessionID 过期，保留账号: ${account.email}`, 'DREAMINA')
+                validAccounts.push(account)
+            } else if (canAutoLogin(account)) {
                 logger.info(`SessionID 无效，尝试重新登录: ${account.email}`, 'DREAMINA', '🔄')
                 const result = await this.tokenManager.login(account.email, account.password)
                 if (result) {
@@ -349,6 +372,7 @@ class DreaminaAccount {
         logger.info('开始自动刷新 Dreamina SessionID...', 'DREAMINA', '🔄')
 
         const needsRefresh = this.dreaminaAccounts.filter(account =>
+            canAutoLogin(account) &&
             this.tokenManager.isSessionIdExpiringSoon(account.sessionid_expires, thresholdHours)
         )
 
@@ -375,6 +399,7 @@ class DreaminaAccount {
 
                     await this.dataPersistence.saveAccount(account.email, {
                         password: updatedAccount.password,
+                        region: account.region,
                         sessionid: updatedAccount.sessionid,
                         sessionid_expires: updatedAccount.sessionid_expires,
                         disabled: false,
@@ -425,8 +450,15 @@ class DreaminaAccount {
         return Promise.all(results)
     }
 
-    async addAccount(email, password, existingSessionId = null) {
+    async addAccount(email, password, existingSessionId = null, region = 'us') {
         try {
+            const normalizedRegion = normalizeRegion(region)
+
+            if (normalizedRegion === 'cn' && !existingSessionId) {
+                logger.error(`CN region requires sessionid: ${email}`, 'DREAMINA')
+                return false
+            }
+
             const existingAccount = this.dreaminaAccounts.find(acc => acc.email === email)
             if (existingAccount) {
                 logger.warn(`Dreamina 账户 ${email} 已存在`, 'DREAMINA')
@@ -445,9 +477,9 @@ class DreaminaAccount {
 
                 if (existingSessionId) {
                     sessionid = existingSessionId
-                    sessionid_expires = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+                    sessionid_expires = Math.floor(Date.now() / 1000) + 60 * 24 * 60 * 60
                     logger.info(`使用已有 SessionID 添加账户: ${email}`, 'DREAMINA')
-                } else {
+                } else if (canAutoLogin({ password, region: normalizedRegion })) {
                     const result = await this.tokenManager.login(email, password)
                     if (!result) {
                         logger.error(`Dreamina 账户 ${email} 登录失败，无法添加`, 'DREAMINA')
@@ -455,11 +487,15 @@ class DreaminaAccount {
                     }
                     sessionid = result.sessionid
                     sessionid_expires = result.expires
+                } else {
+                    logger.error(`Dreamina 账户 ${email} 无法自动登录，无法添加`, 'DREAMINA')
+                    return false
                 }
 
                 const newAccount = {
                     email,
                     password,
+                    region: normalizedRegion,
                     sessionid,
                     sessionid_expires,
                     disabled: false,
@@ -522,6 +558,11 @@ class DreaminaAccount {
             return false
         }
 
+        if (!canAutoLogin(account)) {
+            logger.info(`账户 ${email} 不支持自动登录（CN 区域或无密码），跳过刷新`, 'DREAMINA')
+            return false
+        }
+
         const updatedAccount = await this.tokenManager.refreshSessionId(account)
         if (updatedAccount) {
             // 刷新成功：重置权重（视为没有失败过），但保留调用次数降权
@@ -551,6 +592,7 @@ class DreaminaAccount {
 
             await this.dataPersistence.saveAccount(email, {
                 password: updatedAccount.password,
+                region: account.region,
                 sessionid: updatedAccount.sessionid,
                 sessionid_expires: updatedAccount.sessionid_expires,
                 disabled: false,

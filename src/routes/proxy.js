@@ -8,6 +8,22 @@ const dreaminaAccountManager = require('../utils/dreamina-account')
 const dailyStats = require('../utils/daily-stats')
 const config = require('../config')
 
+function applyRegionPrefix(sessionid, region) {
+  if (region === 'cn') return sessionid
+  const prefix = `${region}-`
+  if (sessionid.startsWith(prefix)) return sessionid
+  // 检查是否已有其他前缀（如 us-xxx 但 region 为 hk）
+  const firstDash = sessionid.indexOf('-')
+  if (firstDash > 0 && firstDash <= 3) {
+    const existingPrefix = sessionid.slice(0, firstDash)
+    if (existingPrefix !== region) {
+      logger.warn(`sessionid 已有前缀 "${existingPrefix}-" 但 region 为 "${region}"，保持原值`, 'PROXY')
+      return sessionid
+    }
+  }
+  return prefix + sessionid
+}
+
 // 使用新的加权选账方法
 const pickAccount = async () => {
   return dreaminaAccountManager.pickAccountByWeight()
@@ -156,8 +172,7 @@ router.all('*', apiKeyVerify, async (req, res) => {
           setCorsHeaders(req, res)
           return res.status(503).json({ error: 'no available account' })
         }
-        const regionPrefix = `${config.region}-`
-        const sid = accountForAttempt.sessionid.startsWith(regionPrefix) ? accountForAttempt.sessionid : `${regionPrefix}${accountForAttempt.sessionid}`
+        const sid = applyRegionPrefix(accountForAttempt.sessionid, accountForAttempt.region || 'cn')
         headers.authorization = `Bearer ${sid}`
 
         // 请求日志（含 sessionId 前缀）

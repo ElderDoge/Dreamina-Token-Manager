@@ -273,6 +273,7 @@ const getAllAccounts = async () => {
       return {
         email: keys[index].replace('user:', ''),
         password: accountData.password || '',
+        region: accountData.region || 'cn',
         sessionid: accountData.sessionid || '',
         sessionid_expires: sessionExpires,
         disabled: accountData.disabled === 'true',
@@ -307,6 +308,7 @@ const setAccount = async (key, value) => {
     const { password, sessionid, sessionid_expires } = value
     await client.hset(`user:${key}`, {
       password: password || '',
+      region: value.region || 'cn',
       sessionid: sessionid || '',
       sessionid_expires: sessionid_expires || '',
       disabled: value.disabled ? 'true' : 'false',

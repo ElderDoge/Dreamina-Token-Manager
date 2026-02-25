@@ -129,6 +129,7 @@ class DataPersistence {
 
     return (data.accounts || []).map(acc => ({
       ...acc,
+      region: acc.region || 'cn',
       disabled: acc.disabled === true,
       // 可用性字段
       weight: typeof acc.weight === 'number' ? acc.weight : 100,
@@ -158,7 +159,7 @@ class DataPersistence {
       if (email && password) {
         // 注意：这里需要登录获取sessionid，但在加载阶段不应该进行网络请求
         // 这个逻辑需要在Account类中处理
-        accounts.push({ email, password, sessionid: null, sessionid_expires: null })
+        accounts.push({ email, password, region: 'cn', sessionid: null, sessionid_expires: null })
       }
     }
 
@@ -192,6 +193,7 @@ class DataPersistence {
       const updatedAccount = {
         email,
         password: accountData.password,
+        region: accountData.region || 'cn',
         sessionid: accountData.sessionid,
         sessionid_expires: accountData.sessionid_expires,
         disabled: accountData.disabled === true,
@@ -242,6 +244,7 @@ class DataPersistence {
       data.accounts = accounts.map(account => ({
         email: account.email,
         password: account.password,
+        region: account.region || 'cn',
         sessionid: account.sessionid,
         sessionid_expires: account.sessionid_expires,
         disabled: account.disabled === true,

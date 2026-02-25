@@ -222,6 +222,12 @@
                   <button @click="copyToClipboard(token.email)" class="absolute right-2 opacity-0 hover:opacity-100 transition-opacity bg-blue-200 hover:bg-blue-300 rounded px-2 py-1 text-base">📋</button>
                 </div>
                 <div class="relative flex items-center bg-blue-50/80 rounded-lg px-2 py-1">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-gray-700 min-w-[96px] text-left font-semibold">🌏 Region:</span>
+                    <span class="font-medium uppercase">{{ token.region || 'cn' }}</span>
+                  </div>
+                </div>
+                <div class="relative flex items-center bg-blue-50/80 rounded-lg px-2 py-1">
                   <div class="overflow-x-auto scrollbar-hide flex-1 flex items-center space-x-2">
                     <span class="text-gray-700 min-w-[96px] text-left font-semibold">⏰ Expire:</span>
                     <span class="font-medium whitespace-nowrap text-left">{{ new Date(token.sessionid_expires * 1000).toLocaleString() }}</span>
@@ -290,9 +296,9 @@
 
         <!-- 列表视图 -->
         <div v-if="viewMode === 'list'" class="overflow-x-auto mx-4">
-          <div class="bg-white/50 rounded-xl shadow-sm border border-gray-200/80 min-w-[700px]">
+          <div class="bg-white/50 rounded-xl shadow-sm border border-gray-200/80 min-w-[760px]">
           <!-- 表头 -->
-          <div class="grid grid-cols-[40px,1fr,180px,80px,100px,100px] gap-x-2 px-4 py-3 border-b border-gray-200/80 bg-gray-50/80 rounded-t-xl text-sm font-semibold text-gray-600">
+          <div class="grid grid-cols-[40px,1fr,60px,180px,80px,100px,100px] gap-x-2 px-4 py-3 border-b border-gray-200/80 bg-gray-50/80 rounded-t-xl text-sm font-semibold text-gray-600">
             <div class="flex items-center justify-center">
               <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
             </div>
@@ -302,6 +308,7 @@
                 <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
               </svg>
             </div>
+            <div class="text-center">Region</div>
             <div class="flex items-center cursor-pointer select-none hover:text-indigo-600 transition-colors" @click="toggleSort('sessionid_expires')">
               <span>过期时间</span>
               <svg v-if="sortState.key === 'sessionid_expires'" class="w-4 h-4 ml-1 transition-transform" :class="sortState.dir === 'desc' ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
@@ -324,7 +331,7 @@
           </div>
           <!-- 数据行 -->
           <div v-for="token in displayedTokens" :key="token.email"
-               class="grid grid-cols-[40px,1fr,180px,80px,100px,100px] gap-x-2 px-4 py-2.5 items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
+               class="grid grid-cols-[40px,1fr,60px,180px,80px,100px,100px] gap-x-2 px-4 py-2.5 items-center border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
                :class="{'bg-indigo-50/50': isSelected(token.email)}">
             <!-- 复选框 -->
             <div class="flex items-center justify-center">
@@ -336,6 +343,8 @@
               <span class="w-2 h-2 rounded-full flex-shrink-0" :class="{'bg-green-500': !token.overall_unavailable, 'bg-red-500': token.overall_unavailable}"></span>
               <span class="truncate text-gray-800 text-sm" :title="token.email">{{ token.email }}</span>
             </div>
+            <!-- Region -->
+            <div class="text-center text-sm font-medium uppercase text-gray-600">{{ token.region || 'cn' }}</div>
             <!-- 过期时间 -->
             <div class="text-sm text-gray-600">{{ new Date(token.sessionid_expires * 1000).toLocaleString() }}</div>
             <!-- 权重 -->
@@ -407,7 +416,18 @@
                        class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-12 text-base px-4">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700">SessionID (可选)</label>
+                <label class="block text-sm font-medium text-gray-700">Region</label>
+                <select v-model="newAccount.region"
+                        class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-12 text-base px-4">
+                  <option value="us">us</option>
+                  <option value="hk">hk</option>
+                  <option value="jp">jp</option>
+                  <option value="sg">sg</option>
+                  <option value="cn">cn</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">SessionID (可选，CN 区域必填)</label>
                 <input v-model="newAccount.sessionid" type="text" placeholder="如果提供则跳过登录"
                        class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-12 text-base px-4">
               </div>
@@ -427,7 +447,8 @@
             <h2 class="text-xl font-bold mb-4 px-4">批量添加账号</h2>
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 px-4 pb-2">账号列表（每行一个，格式：email:password[:sessionid]）</label>
+                <label class="block text-sm font-medium text-gray-700 px-4 pb-1">账号列表（每行一个，格式：email:password:region[:sessionid]）</label>
+                <p class="text-xs text-gray-500 px-4 pb-2">CN 区域示例：user@example.com::cn:cnSessionIdHere</p>
                 <textarea v-model="batchAccounts" rows="6" class="mt-1 block w-full rounded-xl border-gray-300 bg-white/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-300 h-36 text-base px-4 py-3 resize-none"></textarea>
               </div>
               <div class="flex justify-end space-x-4 pt-4">
@@ -478,6 +499,7 @@ const addMode = ref('single')
 const newAccount = ref({
   email: '',
   password: '',
+  region: 'us',
   sessionid: ''
 })
 const batchAccounts = ref('')
@@ -726,7 +748,7 @@ const addToken = async () => {
       }
     })
     showAddModal.value = false
-    newAccount.value = { email: '', password: '', sessionid: '' }
+    newAccount.value = { email: '', password: '', region: 'us', sessionid: '' }
     showToast('添加任务已提交')
   } catch (error) {
     console.error('添加账号失败:', error)
@@ -916,7 +938,7 @@ const exportAccounts = async () => {
       return
     }
 
-    const content = allAccounts.map(token => `${token.email}:${token.password}:${token.sessionid}`).join('\n')
+    const content = allAccounts.map(token => `${token.email}:${token.password}:${token.region || 'cn'}:${token.sessionid}`).join('\n')
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

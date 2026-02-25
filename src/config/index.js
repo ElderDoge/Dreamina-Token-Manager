@@ -75,8 +75,6 @@ const config = {
   // 全局权重下限
   weightMin:
     parseFloat(process.env.WEIGHT_MIN) || 10,
-  // 区域前缀配置 (us/hk/jp/sg)
-  region: (process.env.REGION || "us").toLowerCase(),
   // 账号列表刷新间隔（秒），用于多实例同步，默认 60 秒（1 分钟），设为 0 禁用
   accountListRefreshInterval: (() => {
     const val = parseInt(process.env.ACCOUNT_LIST_REFRESH_INTERVAL, 10);
@@ -85,3 +83,4 @@ const config = {
 };
 
 module.exports = config;
+module.exports.VALID_REGIONS = new Set(['us', 'hk', 'jp', 'sg', 'cn'])

@@ -8,6 +8,12 @@ const DataPersistence = require('../utils/data-persistence')
 const sse = require('../utils/sse')
 const config = require('../config')
 
+const { VALID_REGIONS } = config
+
+function normalizeRegion(region) {
+  return (region || '').toLowerCase().trim()
+}
+
 const dataPersistence = new DataPersistence()
 
 router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
@@ -66,6 +72,7 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
     const accounts = paginatedAccounts.map(account => ({
       email: account.email,
       password: account.password,
+      region: account.region || 'cn',
       sessionid: account.sessionid,
       sessionid_expires: account.sessionid_expires,
       disabled: account.disabled,
@@ -90,9 +97,21 @@ router.get('/getAllAccounts', adminKeyVerify, async (req, res) => {
 
 router.post('/setAccount', adminKeyVerify, async (req, res) => {
   try {
-    const { email, password, sessionid } = req.body
-    if (!email || !password) {
-      return res.status(400).json({ error: '邮箱和密码不能为空' })
+    const { email, password, sessionid, region } = req.body
+    if (!email) {
+      return res.status(400).json({ error: '邮箱不能为空' })
+    }
+    if (!region) {
+      return res.status(400).json({ error: 'region 不能为空' })
+    }
+
+    const normalizedRegion = normalizeRegion(region)
+    if (!VALID_REGIONS.has(normalizedRegion)) {
+      return res.status(400).json({ error: `Invalid region: ${normalizedRegion}` })
+    }
+
+    if (normalizedRegion === 'cn' && !sessionid) {
+      return res.status(400).json({ error: 'CN region 必须提供 sessionid' })
     }
 
     const exists = dreaminaAccountManager.getAllAccounts().find(item => item.email === email)
@@ -105,7 +124,7 @@ router.post('/setAccount', adminKeyVerify, async (req, res) => {
 
     setImmediate(async () => {
       try {
-        const success = await dreaminaAccountManager.addAccount(email, password, sessionid || null)
+        const success = await dreaminaAccountManager.addAccount(email, password || '', sessionid || null, normalizedRegion)
         sse.broadcast('account:add:done', { jobId, email, success })
       } catch (err) {
         logger.error('后台创建账号任务失败', 'DREAMINA', '', err)
@@ -163,17 +182,50 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
         uniqueList.push(item)
       }
     }
-    const finalList = uniqueList
+
+    // 格式: email:password:region[:sessionid]
+    // 先全量校验，任一行失败则拒绝全部
+    const validationErrors = []
+    for (let i = 0; i < uniqueList.length; i++) {
+      const line = uniqueList[i]
+      const parts = line.split(':')
+      const email = parts[0]
+      const regionRaw = parts[2]
+      const region = normalizeRegion(regionRaw || '')
+      const sessionid = parts.slice(3).join(':') || null
+
+      if (!email) {
+        validationErrors.push({ line: i + 1, error: 'Email is required' })
+        continue
+      }
+
+      if (!region) {
+        validationErrors.push({ line: i + 1, email, error: 'Region is required' })
+        continue
+      }
+
+      if (!VALID_REGIONS.has(region)) {
+        validationErrors.push({ line: i + 1, email, error: `Invalid region: ${region}` })
+        continue
+      }
+
+      if (region === 'cn' && !sessionid) {
+        validationErrors.push({ line: i + 1, email, error: 'CN region requires sessionid' })
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ error: '批量导入校验失败', errors: validationErrors })
+    }
 
     const jobId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    res.status(202).json({ message: '批量任务已提交', jobId, total: finalList.length })
+    res.status(202).json({ message: '批量任务已提交', jobId, total: uniqueList.length })
 
     setImmediate(async () => {
       let successCount = 0
       const failed = []
       const concurrency = config.batchAddConcurrency
 
-      // 简单的并发控制函数
       const processBatch = async (items, limit, fn) => {
         const results = []
         const executing = []
@@ -191,12 +243,12 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
         return Promise.all(results)
       }
 
-      await processBatch(finalList, concurrency, async (line) => {
+      await processBatch(uniqueList, concurrency, async (line) => {
         const parts = line.split(':')
         const email = parts[0]
-        const password = parts[1]
-        const sessionid = parts.slice(2).join(':') || null
-        if (!email || !password) return
+        const password = parts[1] || ''
+        const region = normalizeRegion(parts[2] || '') || 'cn'
+        const sessionid = parts.slice(3).join(':') || null
 
         const exists = dreaminaAccountManager.getAllAccounts().find(item => item.email === email)
         if (exists) {
@@ -205,7 +257,7 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
         }
 
         try {
-          const ok = await dreaminaAccountManager.addAccount(email, password, sessionid)
+          const ok = await dreaminaAccountManager.addAccount(email, password, sessionid, region)
           if (ok) successCount++
           else failed.push({ email, reason: 'failed' })
         } catch (e) {
@@ -215,7 +267,7 @@ router.post('/setAccounts', adminKeyVerify, async (req, res) => {
 
       sse.broadcast('account:batchAdd:done', {
         jobId,
-        total: finalList.length,
+        total: uniqueList.length,
         successCount,
         failed
       })
