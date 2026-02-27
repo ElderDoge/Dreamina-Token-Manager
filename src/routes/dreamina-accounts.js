@@ -149,7 +149,10 @@ router.delete('/deleteAccount', adminKeyVerify, async (req, res) => {
     const success = await dreaminaAccountManager.removeAccount(email)
 
     if (success) {
-      await dataPersistence.saveAllAccounts(dreaminaAccountManager.getAllAccounts())
+      const deleted = await dataPersistence.deleteAccount(email)
+      if (!deleted) {
+        return res.status(500).json({ error: 'Dreamina 账号持久化删除失败' })
+      }
       res.json({ message: 'Dreamina 账号删除成功' })
     } else {
       res.status(500).json({ error: 'Dreamina 账号删除失败' })

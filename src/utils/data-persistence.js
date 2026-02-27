@@ -83,6 +83,29 @@ class DataPersistence {
   }
 
   /**
+   * 删除单个账户数据
+   * @param {string} email - 邮箱
+   * @returns {Promise<boolean>} 删除是否成功
+   */
+  async deleteAccount(email) {
+    try {
+      switch (config.dataSaveMode) {
+        case 'redis':
+          return await redisClient.deleteAccount(email)
+        case 'file':
+          return await this._deleteFromFile(email)
+        case 'none':
+          return true
+        default:
+          throw new Error(`不支持的数据保存模式: ${config.dataSaveMode}`)
+      }
+    } catch (error) {
+      logger.error(`删除账户数据失败 (${email})`, 'DATA', '', error)
+      return false
+    }
+  }
+
+  /**
    * 批量保存账户数据
    * @param {Array} accounts - 账户列表
    * @returns {Promise<boolean>} 保存是否成功
@@ -228,6 +251,23 @@ class DataPersistence {
       if (success) successCount++
     }
     return successCount === accounts.length
+  }
+
+  /**
+   * 从文件删除单个账户
+   * @private
+   */
+  async _deleteFromFile(email) {
+    return this._withFileLock(async () => {
+      await this._ensureDataFileExists()
+      const fileContent = await fs.readFile(this.dataFilePath, 'utf-8')
+      const data = JSON.parse(fileContent)
+      const before = (data.accounts || []).length
+      data.accounts = (data.accounts || []).filter(a => a.email !== email)
+      if (data.accounts.length === before) return false
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), 'utf-8')
+      return true
+    })
   }
 
   /**
