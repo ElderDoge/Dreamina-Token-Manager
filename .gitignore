@@ -13,3 +13,4 @@ pkg_dist/
 .spec-workflow
 !README.md
 .ace-tool/
+/openspec
