@@ -27,3 +27,14 @@
 详见 `openspec/specs/proxy-error-propagation/spec.md`。
 
 核心原则：上游有真实响应时透传，纯网络层故障时返回网关级错误。
+
+## 上游 API 规范
+
+上游为 jimeng-api（v1.6.3），详细接口文档见 `docs/jimeng-api.md`。
+
+主要接口：
+- `POST /v1/images/generations` — 文生图
+- `POST /v1/images/compositions` — 图生图
+- `POST /v1/videos/generations` — 视频生成
+- `POST /v1/chat/completions` — 对话（封装图像生成）
+- `POST /token/check|points|receive` — Token 管理
