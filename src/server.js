@@ -66,7 +66,9 @@ app.get('*', (req, res) => {
 // 处理错误中间件（必须放在所有路由之后）
 app.use((err, req, res, next) => {
   logger.error('服务器内部错误', 'SERVER', '', err)
-  res.status(500).send('服务器内部错误')
+  const message = err instanceof Error ? err.message : String(err)
+  const stack = err instanceof Error ? err.stack : undefined
+  res.status(500).json({ error: message, stack })
 })
 
 

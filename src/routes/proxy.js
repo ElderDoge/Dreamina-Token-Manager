@@ -292,6 +292,13 @@ router.all('*', apiKeyVerify, async (req, res) => {
   } catch (e) {
     logger.error('代理转发失败', 'PROXY', '', e)
     setCorsHeaders(req, res)
+    if (e.response) {
+      // 上游有真实响应：直接透传状态码和响应体
+      let detail = e.response.data
+      try { JSON.stringify(detail) } catch (_) { detail = e.message }
+      return res.status(e.response.status).json({ error: 'upstream error', detail })
+    }
+    // 纯网络层错误（无响应）
     if (e.code === 'ECONNABORTED' || (e.message && e.message.toLowerCase().includes('timeout'))) {
       return res.status(504).json({ error: 'gateway timeout', detail: e.message })
     }
