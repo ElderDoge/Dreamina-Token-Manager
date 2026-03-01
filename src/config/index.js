@@ -72,6 +72,11 @@ const config = {
     parseInt(process.env.CALL_COUNT_THRESHOLD, 10) || 10,
   callCountWeightDecrease:
     parseFloat(process.env.CALL_COUNT_WEIGHT_DECREASE) || 5,
+  // OpenAI quality -> jimeng model 映射
+  gptQualityLow: process.env.GPT_QUALITY_LOW || 'jimeng-4.0',
+  gptQualityMedium: process.env.GPT_QUALITY_MEDIUM || 'jimeng-4.6',
+  gptQualityHigh: process.env.GPT_QUALITY_HIGH || 'jimeng-5.0',
+  gptQualityAuto: process.env.GPT_QUALITY_AUTO || 'jimeng-4.6',
   // 全局权重下限
   weightMin:
     parseFloat(process.env.WEIGHT_MIN) || 10,

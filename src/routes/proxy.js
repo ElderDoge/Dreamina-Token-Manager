@@ -80,8 +80,8 @@ router.all('*', apiKeyVerify, async (req, res) => {
 
     // 构建目标 URL: 去除 /api 前缀
     const originalPath = req.originalUrl || req.url || ''
-    const pathWithoutApi = originalPath.replace(/^\/api/, '')
-    const targetUrl = base.replace(/\/$/, '') + pathWithoutApi
+    const forwardPath = originalPath.replace(/^\/api/, '')
+    const targetUrl = base.replace(/\/$/, '') + forwardPath
 
     // 复制并覆盖 headers，仅替换 Authorization
     const incomingHeaders = { ...req.headers }

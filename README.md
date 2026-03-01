@@ -21,6 +21,7 @@
 - **自动 Token 注入**：自动将有效的 SessionID 注入到请求头
 - **负载均衡**：多个账户间智能分配请求
 - **目标配置**：支持动态配置代理目标地址
+- **OpenAI 兼容**：`/v1/images/generations` 和 `/v1/images/edits` 自动将 OpenAI 格式参数转换为 jimeng 格式
 
 ### 🎨 Web 管理界面
 - **现代化 UI**：基于 Vue 3 + Tailwind CSS 的响应式界面
@@ -135,6 +136,12 @@ MAX_LOG_FILES=5                     # 保留日志文件数量
 # 代理日志
 PROXY_LOG_BODY=false                # 记录请求体
 PROXY_LOG_BODY_MAX=2048             # 请求体最大记录长度
+
+# OpenAI quality -> jimeng model 映射（gpt-* 前缀模型按 quality 查此表）
+GPT_QUALITY_LOW=jimeng-4.0          # quality=low 时使用的模型
+GPT_QUALITY_MEDIUM=jimeng-4.6       # quality=medium 时使用的模型
+GPT_QUALITY_HIGH=jimeng-5.0         # quality=high 时使用的模型
+GPT_QUALITY_AUTO=jimeng-4.6         # quality 缺失/未知时使用的模型
 ```
 
 ### 数据存储模式
@@ -258,11 +265,19 @@ Content-Type: application/json
 #### 代理接口
 
 ```bash
-# 透传所有 API 请求
+# 透传所有 API 请求（去除 /api 前缀后转发）
 ALL /api/*
 Headers:
 - Authorization: Bearer <API_KEY>
 - 其他标准 HTTP 头
+
+# OpenAI 兼容接口（参数自动转换为 jimeng 格式）
+POST /v1/images/generations         # 文生图：model/quality/size → jimeng model/ratio/resolution
+POST /v1/images/edits               # 图生图：multipart image[] → jimeng images[]，转发到 /v1/images/compositions
+
+# 直接透传（与 /api/v1/* 和 /api/token/* 等价）
+ALL /v1/*                           # 除上述两个端点外，其余 /v1/* 原样透传
+ALL /token/*                        # Token 管理接口原样透传
 
 系统会自动：
 1. 验证 API 密钥

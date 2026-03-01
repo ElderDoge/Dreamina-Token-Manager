@@ -9,6 +9,7 @@ const fs = require('fs')
 const verifyRouter = require('./routes/verify.js')
 const dreaminaAccountsRouter = require('./routes/dreamina-accounts.js')
 const proxyRouter = require('./routes/proxy.js')
+const openAiCompatRouter = require('./routes/openai-compat.js')
 const adminRedisRouter = require('./routes/admin-redis.js')
 const { addClient: addSseClient } = require('./utils/sse')
 const { validateApiKey } = require('./middlewares/authorization')
@@ -51,6 +52,12 @@ app.get('/api/events', (req, res) => {
 
 // 通用 API 透传（放在本地 API 之后，避免覆盖内部路由）
 app.use('/api', proxyRouter)
+// OpenAI 兼容适配层（拦截 /v1/images/generations 和 /v1/images/edits）
+app.use('/v1', openAiCompatRouter)
+// /v1 其他路径透传
+app.use('/v1', proxyRouter)
+// /token 路径透传
+app.use('/token', proxyRouter)
 
 app.use(express.static(path.join(__dirname, '../public/dist')))
 

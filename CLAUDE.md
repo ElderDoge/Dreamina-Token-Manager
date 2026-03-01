@@ -28,6 +28,24 @@
 
 核心原则：上游有真实响应时透传，纯网络层故障时返回网关级错误。
 
+## 路由挂载顺序
+
+`server.js` 中路由的挂载顺序决定优先级（先挂载先匹配）：
+
+1. `app.use('/api', proxyRouter)` — 原始代理，去除 `/api` 前缀后透传
+2. `app.use('/v1', openAiCompatRouter)` — OpenAI 兼容适配（拦截 `/images/generations` 和 `/images/edits`）
+3. `app.use('/v1', proxyRouter)` — 其余 `/v1/*` 直接透传
+4. `app.use('/token', proxyRouter)` — `/token/*` 直接透传
+
+## OpenAI 兼容适配层
+
+`src/routes/openai-compat.js` 实现 OpenAI 格式到 jimeng 格式的参数转换：
+
+- **`POST /v1/images/generations`**：将 `model`/`quality`/`size` 转换为 jimeng 的 `model`/`ratio`/`resolution`/`intelligent_ratio`，支持账号池重试
+  - `gpt-*` 前缀模型按 `quality` 查 `GPT_QUALITY_*` 环境变量映射；其他 model 原样透传
+  - `size` 格式：`16:9` 直接作为 ratio；`WxH` 按绝对差算法匹配最近邻比例；`auto` → `intelligent_ratio: true`
+- **`POST /v1/images/edits`**：multipart 表单，`image`/`image[]` 映射为上游 `images[]`，`mask` 丢弃，转发到 `/v1/images/compositions`，不重试
+
 ## 上游 API 规范
 
 上游为 jimeng-api（v1.6.3），详细接口文档见 `docs/jimeng-api.md`。

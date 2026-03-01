@@ -14,7 +14,11 @@
     "pm2:status": "pm2 status",
     "pm2:monit": "pm2 monit"
   },
-  "keywords": ["dreamina", "token-manager", "sessionid"],
+  "keywords": [
+    "dreamina",
+    "token-manager",
+    "sessionid"
+  ],
   "author": "",
   "license": "ISC",
   "description": "Dreamina SessionID Token Manager",
@@ -25,6 +29,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "ioredis": "^5.6.1",
+    "multer": "^2.1.0",
     "playwright": "1.56.1",
     "pm2": "^6.0.8"
   },
