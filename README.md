@@ -1,502 +1,282 @@
 # Dreamina Token Manager
 
-一个用于管理 Dreamina AI 服务 SessionID Token 的完整解决方案，提供自动化的账户管理、SessionID 获取与刷新、以及 API 代理功能。
+管理 Dreamina 账号池的代理服务。核心职责是维护一组账号的 SessionID，对外暴露一个透明的 HTTP 代理——调用方像直接调用上游 API 一样发请求，服务自动选一个可用账号注入认证头并转发。
 
-## 📋 功能特性
+附带一个 Web 管理后台用于增删账号、手动刷新 SessionID、查看账号状态。
 
-### 🔐 账户管理
-- **批量账户添加**：支持单个或批量添加 Dreamina 账户
-- **自动登录验证**：使用 Playwright 自动登录并获取 SessionID
-- **账户状态监控**：实时显示账户登录状态和 Token 有效期
-- **数据持久化**：支持文件存储和 Redis 两种存储模式
+## 功能特性
 
-### 🔄 SessionID 管理
-- **自动刷新**：智能检测即将过期的 SessionID 并自动刷新
-- **手动刷新**：支持单个或批量强制刷新所有账户
-- **过期预警**：24小时内过期的账户会有明显标识
-- **负载均衡**：多个账户间轮询分配，提高并发性能
+### 账号管理
 
-### 🌐 API 代理
-- **透明代理**：将请求透传到目标 AI 服务
-- **自动 Token 注入**：自动将有效的 SessionID 注入到请求头
-- **负载均衡**：多个账户间智能分配请求
-- **目标配置**：支持动态配置代理目标地址
-- **OpenAI 兼容**：`/v1/images/generations` 和 `/v1/images/edits` 自动将 OpenAI 格式参数转换为 jimeng 格式
+- 支持单个或批量添加账号（`email:password:region` 格式）
+- 非大陆区账号通过 Playwright 自动登录，免手动获取 SessionID
+- 可手动删除账号或恢复被标记为不可用的账号
 
-### 🎨 Web 管理界面
-- **现代化 UI**：基于 Vue 3 + Tailwind CSS 的响应式界面
-- **实时更新**：通过 SSE 实现任务状态实时推送
-- **批量操作**：支持批量添加、删除、刷新等操作
-- **数据导出**：支持导出账户列表
+### SessionID 管理
 
-### 🐳 部署支持
-- **Docker 部署**：提供完整的 Docker 镜像和 Compose 配置
-- **PM2 集群**：支持多进程部署，提高稳定性
-- **Redis 集成**：可选的 Redis 支持用于分布式部署
+- 每日定时自动刷新即将过期的 SessionID
+- 可手动触发单账号或全量刷新
+- 上游返回 401 时自动标记当日不可用，次日自动解封
 
-## 🚀 快速开始
+### 代理透传
 
-### 环境要求
+- `POST /v1/images/generations` 和 `POST /v1/images/edits` 提供 OpenAI Images 兼容入口，自动转换参数格式
+- 其余 `/api/*`、`/v1/*`、`/token/*` 请求原样透传到上游
+- 上游出错时自动切换账号重试，调用方无感知
 
-- Node.js >= 16.0.0
-- npm >= 8.0.0
-- 可选：Redis（用于分布式部署）
-- 可选：Docker & Docker Compose
+### 管理后台
 
-### 安装部署
+- Vue 3 单页应用，分页展示账号状态和 SessionID 有效期
+- 批量操作：导入、刷新、删除
+- 异步任务通过 SSE 推送进度，无需轮询
 
-#### 方式一：直接部署
+## 环境要求
+
+- Node.js >= 18
+- npm >= 9
+- 可选：Redis（`DATA_SAVE_MODE=redis` 时必需）
+
+## 快速开始
+
+### 直接部署
 
 ```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd Qwen2API
-
-# 2. 安装依赖
+# 1. 安装后端依赖
 npm install
 
-# 3. 安装前端依赖并构建
-cd public
-npm install
-npm run build
-cd ..
+# 2. 安装并构建前端
+cd public && npm install && npm run build && cd ..
 
-# 4. 配置环境变量
+# 3. 复制并编辑配置
 cp .env.example .env
-# 编辑 .env 文件配置必要参数
+# 至少填写 API_KEY 和 PROXY_TARGET
 
-# 5. 启动服务
-npm run dev  # 开发模式
-npm start    # 生产模式
+# 4. 启动服务
+npm start
 ```
 
-#### 方式二：Docker 部署
+启动后访问 `http://localhost:3000` 进入管理后台。
+
+### Docker 部署
 
 ```bash
-# 1. 使用 Docker Compose（推荐）
-docker compose -f docker-compose.yml up -d
-
-# 2. 使用 Redis 模式
-docker compose -f docker-compose-redis.yml up -d
-
-# 3. 查看服务状态
-docker compose ps
+docker compose up -d
 ```
 
-#### 方式三：PM2 部署
+默认将容器端口 `3000` 映射到宿主机 `3103`，按需修改 `docker-compose.yml`。
+
+### PM2 部署
 
 ```bash
-# 1. 安装 PM2
-npm install -g pm2
-
-# 2. 启动服务
+# 启动（集群模式，进程数由 PM2_INSTANCES 控制）
 npm run pm2
 
-# 3. 查看状态
-npm run pm2:status
-
-# 4. 查看日志
-npm run pm2:logs
-```
-
-## ⚙️ 配置说明
-
-### 环境变量配置
-
-创建 `.env` 文件并配置以下参数：
-
-```env
-# 服务配置
-SERVICE_PORT=3000                    # 服务端口
-LISTEN_ADDRESS=0.0.0.0              # 监听地址（可选）
-
-# API 密钥配置
-API_KEY=sk-dreamina-admin,sk-user1  # API 密钥列表，逗号分隔
-
-# 数据存储配置
-DATA_SAVE_MODE=file                 # 存储模式：none/file/redis
-REDIS_URL=redis://localhost:6379    # Redis 连接地址（Redis 模式时必需）
-
-# 代理配置
-PROXY_TARGET=                       # 透传目标地址
-PROXY_TIMEOUT_MS=600000             # 代理超时时间（毫秒）
-
-# 功能开关
-SIMPLE_MODEL_MAP=false              # 简化模型映射
-OUTPUT_THINK=false                  # 输出思考过程
-CACHE_MODE=default                  # 缓存模式
-
-# 日志配置
-LOG_LEVEL=INFO                      # 日志级别：DEBUG/INFO/WARN/ERROR
-ENABLE_FILE_LOG=true                # 启用文件日志
-LOG_DIR=./logs                      # 日志目录
-MAX_LOG_FILE_SIZE=10                # 最大日志文件大小（MB）
-MAX_LOG_FILES=5                     # 保留日志文件数量
-
-# 代理日志
-PROXY_LOG_BODY=false                # 记录请求体
-PROXY_LOG_BODY_MAX=2048             # 请求体最大记录长度
-
-# OpenAI quality -> jimeng model 映射（gpt-* 前缀模型按 quality 查此表）
-GPT_QUALITY_LOW=jimeng-4.0          # quality=low 时使用的模型
-GPT_QUALITY_MEDIUM=jimeng-4.6       # quality=medium 时使用的模型
-GPT_QUALITY_HIGH=jimeng-5.0         # quality=high 时使用的模型
-GPT_QUALITY_AUTO=jimeng-4.6         # quality 缺失/未知时使用的模型
-```
-
-### 数据存储模式
-
-#### 1. None 模式（`DATA_SAVE_MODE=none`）
-- 数据仅保存在内存中
-- 服务重启后数据丢失
-- 适合临时测试环境
-
-#### 2. File 模式（`DATA_SAVE_MODE=file`）
-- 数据保存在 `data/data.json` 文件中
-- 服务重启后数据持久化
-- 适合单机部署
-
-#### 3. Redis 模式（`DATA_SAVE_MODE=redis`）
-- 数据保存在 Redis 中
-- 支持多实例共享数据
-- 适合分布式部署
-
-## 📖 使用指南
-
-### Web 管理界面
-
-1. **访问界面**
-   ```
-   http://localhost:3000
-   ```
-
-2. **登录认证**
-   - 输入 API 密钥进行身份验证
-   - 管理员密钥：`API_KEY` 中的第一个密钥
-
-3. **添加账户**
-   - 点击"添加账号"按钮
-   - 支持单个添加或批量添加
-   - 格式：`email:password`
-
-4. **管理账户**
-   - 查看账户状态和 SessionID 有效期
-   - 单个或批量刷新 SessionID
-   - 删除不需要的账户
-
-5. **配置代理**
-   - 设置透传目标地址
-   - 实时查看代理状态
-
-### API 接口
-
-#### 账户管理接口
-
-```bash
-# 获取所有账户
-GET /api/dreamina/getAllAccounts
-Authorization: Bearer <API_KEY>
-
-# 添加账户
-POST /api/dreamina/addAccount
-Authorization: Bearer <API_KEY>
-Content-Type: application/json
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-
-# 批量添加账户
-POST /api/dreamina/addAccounts
-Authorization: Bearer <API_KEY>
-Content-Type: application/json
-{
-  "accounts": [
-    "user1@example.com:password1",
-    "user2@example.com:password2"
-  ]
-}
-
-# 刷新单个账户 SessionID
-POST /api/dreamina/refreshSessionId
-Authorization: Bearer <API_KEY>
-Content-Type: application/json
-{
-  "email": "user@example.com"
-}
-
-# 批量刷新 SessionID
-POST /api/dreamina/refreshAllSessionIds
-Authorization: Bearer <API_KEY>
-
-# 强制刷新所有 SessionID
-POST /api/dreamina/forceRefreshAllSessionIds
-Authorization: Bearer <API_KEY>
-
-# 删除账户
-DELETE /api/dreamina/deleteAccount
-Authorization: Bearer <API_KEY>
-Content-Type: application/json
-{
-  "email": "user@example.com"
-}
-
-# 删除所有账户
-DELETE /api/dreamina/deleteAllAccounts
-Authorization: Bearer <API_KEY>
-```
-
-#### 代理配置接口
-
-```bash
-# 获取代理目标
-GET /api/proxy/target
-Authorization: Bearer <API_KEY>
-
-# 设置代理目标
-POST /api/proxy/target
-Authorization: Bearer <API_KEY>
-Content-Type: application/json
-{
-  "target": "https://api.example.com"
-}
-```
-
-#### 代理接口
-
-```bash
-# 透传所有 API 请求（去除 /api 前缀后转发）
-ALL /api/*
-Headers:
-- Authorization: Bearer <API_KEY>
-- 其他标准 HTTP 头
-
-# OpenAI 兼容接口（参数自动转换为 jimeng 格式）
-POST /v1/images/generations         # 文生图：model/quality/size → jimeng model/ratio/resolution
-POST /v1/images/edits               # 图生图：multipart image[] → jimeng images[]，转发到 /v1/images/compositions
-
-# 直接透传（与 /api/v1/* 和 /api/token/* 等价）
-ALL /v1/*                           # 除上述两个端点外，其余 /v1/* 原样透传
-ALL /token/*                        # Token 管理接口原样透传
-
-系统会自动：
-1. 验证 API 密钥
-2. 选择可用的 Dreamina 账户
-3. 注入 SessionID 到请求头
-4. 转发请求到目标地址
-5. 返回响应给客户端
-```
-
-## 🔧 开发指南
-
-### 项目结构
-
-```
-Qwen2API/
-├── src/                     # 后端源码
-│   ├── config/             # 配置文件
-│   ├── middlewares/        # 中间件
-│   ├── routes/            # 路由定义
-│   ├── utils/             # 工具类
-│   ├── server.js          # 服务器入口
-│   └── start.js           # 启动脚本
-├── public/                # 前端源码
-│   ├── src/              # Vue 源码
-│   ├── dist/             # 构建产物
-│   └── package.json      # 前端依赖
-├── data/                 # 数据存储目录
-├── logs/                 # 日志目录
-├── docs/                 # 文档资源
-├── docker-compose.yml    # Docker 编排文件
-├── ecosystem.config.js   # PM2 配置文件
-└── package.json          # 后端依赖
-```
-
-### 核心模块
-
-#### 1. DreaminaAccount (`src/utils/dreamina-account.js`)
-- 账户管理核心类
-- 负责账户的增删改查
-- 自动刷新 SessionID
-
-#### 2. DreaminaTokenManager (`src/utils/dreamina-token-manager.js`)
-- SessionID 获取和管理
-- Playwright 自动登录
-- Token 有效性验证
-
-#### 3. DataPersistence (`src/utils/data-persistence.js`)
-- 数据持久化抽象层
-- 支持多种存储模式
-- 统一的数据访问接口
-
-#### 4. ProxyRouter (`src/routes/proxy.js`)
-- API 请求代理
-- 负载均衡算法
-- SessionID 自动注入
-
-### 开发命令
-
-```bash
-# 开发模式（后端热重载）
-npm run dev
-
-# 构建前端
-cd public && npm run build
-
-# 启动生产环境
-npm start
-
-# PM2 进程管理
-npm run pm2          # 启动
-npm run pm2:restart  # 重启
+# 常用命令
+npm run pm2:status   # 查看进程状态
 npm run pm2:logs     # 查看日志
-npm run pm2:status   # 查看状态
-npm run pm2:delete   # 删除进程
+npm run pm2:restart  # 重启
+npm run pm2:delete   # 停止并删除
 ```
 
-### 代码规范
+## 配置说明
 
-- **语言**：JavaScript (Node.js CommonJS)
-- **风格**：单引号、无分号、2 空格缩进
-- **命名**：
-  - 文件名：`kebab-case`
-  - 类名：`PascalCase`
-  - 变量/函数：`camelCase`
-- **设计原则**：KISS、DRY、YAGNI、SOLID
+创建 `.env` 文件（可从 `.env.example` 复制），完整说明见该文件。
 
-## 🔍 监控与日志
+### 核心配置
 
-### 日志系统
+| 变量 | 说明 |
+|---|---|
+| `SERVICE_PORT` | 服务端口，默认 `3000` |
+| `API_KEY` | API 密钥，逗号分隔多个；**第一个为管理员密钥** |
+| `DATA_SAVE_MODE` | 存储模式：`none`（不持久化）/ `file`（本地文件）/ `redis` |
+| `PROXY_TARGET` | 上游 API 地址，例如 jimeng-api 的地址 |
 
-系统提供完整的日志记录功能：
+### 可选配置
+
+| 变量 | 说明 |
+|---|---|
+| `LISTEN_ADDRESS` | 监听地址，留空使用默认值 |
+| `REDIS_URL` | Redis 连接地址（`redis` 模式必填），例如 `redis://localhost:6379` |
+| `PROXY_TIMEOUT_MS` | 透传超时毫秒数，默认 `600000` |
+| `PROXY_MAX_RETRY` | 上游失败时最多切换账号重试的次数 |
+| `PM2_INSTANCES` | `npm start` 集群进程数，支持 `max` |
+| `DAILY_SESSION_UPDATE_TIME` | 每日定时刷新时间，格式 `HH:mm`；留空关闭 |
+| `TIMEZONE` | 定时刷新时区，默认 `UTC` |
+| `BROWSER_PROXY_ENABLE` | Playwright 登录时是否使用代理（`true`/`false`） |
+| `BROWSER_PROXY_URL` | Playwright 代理地址，支持 http/https/socks5 |
+| `GPT_QUALITY_LOW` | `quality=low` 时映射的 jimeng 模型名 |
+| `GPT_QUALITY_MEDIUM` | `quality=medium` 时映射的模型名 |
+| `GPT_QUALITY_HIGH` | `quality=high` 时映射的模型名 |
+| `GPT_QUALITY_AUTO` | `quality` 缺失/未知时映射的模型名 |
+
+## 鉴权
+
+所有接口都需要携带 API Key，支持两种方式：
+
+```
+Authorization: Bearer <API_KEY>
+```
+```
+x-api-key: <API_KEY>
+```
+
+**权限分级**：`API_KEY` 中第一个值为管理员密钥，可访问管理接口和前端。其余密钥只能调用代理接口。
+
+验证密钥是否有效：
 
 ```bash
-# 查看应用日志
-tail -f logs/app.log
-
-# 查看 PM2 日志
-npm run pm2:logs
-
-# 查看 Docker 日志
-docker compose logs -f
+curl -X POST http://localhost:3000/verify \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey": "sk-xxx"}'
 ```
 
-### 日志级别
+## 使用指南
 
-- **DEBUG**：详细的调试信息
-- **INFO**：一般信息记录
-- **WARN**：警告信息
-- **ERROR**：错误信息
+### 通过管理后台操作
 
-### 关键监控指标
+1. 打开 `http://localhost:3000`，输入管理员密钥登录
+2. 点击「添加账号」，输入 `email:password:region` 格式，支持批量粘贴多行
+3. 添加后后台自动登录获取 SessionID，进度通过 SSE 实时推送到页面
+4. 账号列表显示每个账号的状态和 SessionID 到期时间
 
-1. **账户状态**：登录成功率、SessionID 有效期
-2. **代理性能**：请求成功率、响应时间
-3. **系统资源**：内存使用、CPU 负载
-4. **错误统计**：失败请求、异常次数
+### 添加账号（API）
 
-## 🚨 故障排查
-
-### 常见问题
-
-#### 1. 账户登录失败
-**症状**：添加账户时提示登录失败
-**解决方案**：
-- 检查账户密码是否正确
-- 确认网络连接正常
-- 验证 Dreamina 网站可访问性
-- 查看详细日志确定具体原因
-
-#### 2. SessionID 刷新失败
-**症状**：自动刷新或手动刷新失败
-**解决方案**：
-- 检查账户密码是否已更改
-- 确认 Dreamina 登录流程未变更
-- 验证网络连接稳定性
-- 查看日志中的错误信息
-
-#### 3. 代理请求失败
-**症状**：API 请求返回错误
-**解决方案**：
-- 检查代理目标地址是否正确
-- 确认有可用的 Dreamina 账户
-- 验证 API 密钥有效性
-- 检查网络连接和防火墙设置
-
-#### 4. 前端页面无法访问
-**症状**：浏览器显示 404 或 500 错误
-**解决方案**：
-- 确认前端已正确构建：`cd public && npm run build`
-- 检查 `public/dist` 目录是否存在
-- 验证服务器启动是否正常
-- 查看服务器日志获取详细错误信息
-
-### 调试模式
-
-启用详细日志进行问题诊断：
-
-```env
-# .env 文件
-LOG_LEVEL=DEBUG
-ENABLE_FILE_LOG=true
-PROXY_LOG_BODY=true
-```
-
-## 🤝 贡献指南
-
-### 提交规范
-
-使用 Conventional Commits 规范：
+**单个添加**：
 
 ```bash
-feat: 添加新功能
-fix: 修复问题
-docs: 文档更新
-style: 代码格式调整
-refactor: 代码重构
-test: 测试相关
-chore: 构建过程或辅助工具的变动
+curl -X POST http://localhost:3000/api/dreamina/setAccount \
+  -H "Authorization: Bearer <ADMIN_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "pass123",
+    "region": "us"
+  }'
 ```
 
-### Pull Request 流程
+`region` 可选值：`us` / `hk` / `jp` / `sg` / `cn`。`cn` 区无法自动登录，必须手动提供 `sessionid` 字段。
 
-1. Fork 项目仓库
-2. 创建功能分支：`git checkout -b feature/your-feature`
-3. 提交更改：`git commit -m "feat: 添加新功能"`
-4. 推送分支：`git push origin feature/your-feature`
-5. 创建 Pull Request
+**批量添加**：
 
-### 代码审查
+```bash
+curl -X POST http://localhost:3000/api/dreamina/setAccounts \
+  -H "Authorization: Bearer <ADMIN_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accounts": "u1@example.com:pass1:us\nu2@example.com:pass2:jp\nu3@example.com::cn:your-cn-sessionid"
+  }'
+```
 
-- 确保代码风格一致
-- 添加必要的测试
-- 更新相关文档
-- 验证功能正常工作
+每行格式为 `email:password:region[:sessionid]`。添加为异步任务，响应返回 `jobId`，结果通过 SSE 推送。
 
-## 📄 许可证
+### 发送代理请求
 
-本项目采用 ISC 许可证。详见 [LICENSE](LICENSE) 文件。
+配置好 `PROXY_TARGET` 后，将上游 API 的 base URL 替换为本服务地址，其余不变：
 
-## 🙏 致谢
+```bash
+# 直接透传（去掉 /api 前缀后转发）
+curl -X POST http://localhost:3000/api/v1/images/generations \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "jimeng-4.0", "prompt": "a cat"}'
 
-感谢以下开源项目的支持：
+# OpenAI 兼容入口（自动转换参数格式）
+curl -X POST http://localhost:3000/v1/images/generations \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "prompt": "a cat", "quality": "high", "size": "1024x1024"}'
+```
 
-- [Express.js](https://expressjs.com/) - Web 框架
-- [Vue.js](https://vuejs.org/) - 前端框架
-- [Tailwind CSS](https://tailwindcss.com/) - CSS 框架
-- [Playwright](https://playwright.dev/) - 自动化测试
-- [PM2](https://pm2.keymetrics.io/) - 进程管理
-- [Axios](https://axios-http.com/) - HTTP 客户端
+服务会自动选一个可用账号注入 SessionID，如果上游返回错误则切换账号重试。
 
-## 📞 支持
+## 接口文档
 
-如果您在使用过程中遇到问题，请：
+### 代理接口
 
-1. 查看本文档的故障排查部分
-2. 检查 [Issues](../../issues) 页面
-3. 创建新的 Issue 描述问题
-4. 提供详细的错误信息和复现步骤
+| 路由 | 说明 |
+|---|---|
+| `ALL /api/*` | 剥离 `/api` 前缀后透传；`/api/dreamina/*` 和 `/api/events` 除外（本地管理接口） |
+| `POST /v1/images/generations` | OpenAI 兼容，参数自动转为 jimeng 格式 |
+| `POST /v1/images/edits` | OpenAI 兼容，`multipart/form-data`，`image[]` 转为上游 `images`，转发到 `/v1/images/compositions` |
+| `ALL /v1/*` | 除上述两个端点外，其余原样透传 |
+| `ALL /token/*` | 原样透传 |
 
----
+**OpenAI 兼容说明**：`model` 为空或以 `gpt-` 开头时，按 `quality` 字段查 `GPT_QUALITY_*` 环境变量映射实际模型；`size` 字段支持 `WxH`（最近邻匹配比例）、`W:H`（直接作为 ratio）、`auto`（启用智能比例）三种格式。
 
-**注意**：本项目仅用于学习和研究目的，请遵守相关服务的使用条款和法律法规。
+### 账号管理接口
+
+以下接口均需要管理员 API Key。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/dreamina/getAllAccounts` | 账号列表，支持分页和排序 |
+| `POST` | `/api/dreamina/setAccount` | 新增单个账号（异步，返回 `jobId`） |
+| `POST` | `/api/dreamina/setAccounts` | 批量新增（异步，返回 `jobId`） |
+| `DELETE` | `/api/dreamina/deleteAccount` | 删除指定账号 |
+| `POST` | `/api/dreamina/refreshAccount` | 刷新指定账号的 SessionID |
+| `POST` | `/api/dreamina/refreshAllAccounts` | 刷新即将过期的账号 |
+| `POST` | `/api/dreamina/forceRefreshAllAccounts` | 强制刷新全部账号 |
+| `POST` | `/api/dreamina/restoreAccount` | 手动恢复被标记为不可用的账号 |
+| `POST` | `/api/dreamina/refreshUnavailableAccounts` | 刷新当日不可用或整体不可用的账号 |
+
+### SSE 事件流
+
+管理员订阅异步任务进度：
+
+```bash
+curl "http://localhost:3000/api/events?apiKey=<ADMIN_KEY>"
+```
+
+事件类型：
+- `account:add:done`：单账号添加完成
+- `account:batchAdd:done`：批量添加完成
+- `ping`：心跳保活
+
+### Redis 管理接口
+
+仅 `DATA_SAVE_MODE=redis` 时有效，需要管理员 API Key。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/admin/redis/db` | 查看当前使用的 Redis DB 编号 |
+| `POST` | `/admin/redis/db` | 切换 Redis DB（0-15） |
+
+## 故障排查
+
+**账号添加后状态一直是失败**
+
+- 检查账号密码是否正确
+- 确认 Playwright 能访问 Dreamina 登录页（有防火墙限制时配置 `BROWSER_PROXY_URL`）
+- 查看日志：`npm run pm2:logs` 或 `logs/app.log`
+
+**代理请求返回错误**
+
+- 确认 `PROXY_TARGET` 配置正确且上游可访问
+- 检查账号列表中是否有可用账号（有效 SessionID 且未被标记不可用）
+- 确认请求携带了有效的 API Key
+
+**前端页面打不开**
+
+- 确认前端已构建：`cd public && npm run build`
+- 检查 `public/dist` 目录是否存在构建产物
+
+## 项目结构
+
+```
+.
+├── src/
+│   ├── config/         # 配置加载
+│   ├── middlewares/    # 鉴权等中间件
+│   ├── routes/         # 路由（proxy、openai-compat、管理接口）
+│   ├── utils/          # 账号管理、SessionID 刷新、数据持久化
+│   ├── server.js       # Express 应用和路由挂载
+│   └── start.js        # PM2 入口
+├── public/             # 前端（Vue 3）
+│   ├── src/
+│   └── dist/           # 构建产物
+├── data/               # file 模式的数据文件
+├── logs/
+├── docker-compose.yml
+├── Dockerfile
+└── package.json
+```

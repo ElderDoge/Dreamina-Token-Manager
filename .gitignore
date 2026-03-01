@@ -11,6 +11,7 @@ pkg_dist/
 .idea
 /public/dist
 .spec-workflow
-!README.md
 .ace-tool/
 /openspec
+.docs
+.claude
